@@ -1,0 +1,717 @@
+"""数据加载与校验"""
+import os
+import pandas as pd
+from datetime import datetime
+from typing import Optional
+from models import Lot, LotConstraint, EqpConstraint, FlowStep, StepCT, QTimeConstraint, SpecialLotStep, StepTimeWindow, ShiftChangeTime, ShiftConfig, ManualAdjust, SpecialEqp
+
+DATETIME_FORMAT = "%Y/%m/%d %H:%M"
+
+
+def _read_csv(filepath: str, sep: str = "\t") -> pd.DataFrame:
+    """读取 CSV 文件，自动尝试多种编码和分隔符。
+    如果文件不存在或为空，返回空 DataFrame（列从文件头读取）。"""
+    if not os.path.exists(filepath):
+        return pd.DataFrame()
+    
+    # 检查文件是否为空
+    file_size = os.path.getsize(filepath)
+    if file_size == 0:
+        return pd.DataFrame()
+    
+    for encoding in ["utf-8", "utf-8-sig", "gbk", "gb2312", "gb18030", "latin-1"]:
+        for delimiter in [sep, ",", ";"]:
+            try:
+                df = pd.read_csv(filepath, sep=delimiter, dtype=str, encoding=encoding)
+                # 要求至少解析出 2 列才认为分隔符正确；
+                # 否则可能是"用 tab 读逗号文件"只得到 1 列的错误解析
+                if len(df.columns) >= 2:
+                    return df
+            except (UnicodeDecodeError, UnicodeError):
+                continue
+            except pd.errors.EmptyDataError:
+                return pd.DataFrame()
+            except Exception:
+                continue
+    # 兜底：分隔符自动嗅探（可正确处理单列文件 / 混合分隔符）
+    try:
+        return pd.read_csv(filepath, sep=None, engine="python", dtype=str, encoding="utf-8")
+    except Exception:
+        pass
+    raise Exception(f"无法读取文件 {filepath}，已尝试所有常见编码和分隔符")
+
+
+def parse_datetime(s: Optional[str]) -> Optional[datetime]:
+    """解析日期时间字符串，空值返回 None"""
+    if pd.isna(s) or s is None or str(s).strip() == "":
+        return None
+    return datetime.strptime(str(s).strip(), DATETIME_FORMAT)
+
+
+def parse_priority(s: str) -> tuple[int, int]:
+    """解析优先级 "2-1" → (2, 1)"""
+    parts = str(s).strip().split("-")
+    if len(parts) != 2:
+        raise ValueError(f"优先级格式错误: '{s}'，应为 '外部-内部' 如 '2-1'")
+    return (int(parts[0]), int(parts[1]))
+
+
+def _safe_int(row, col: str, default: int = 0) -> int:
+    """安全读取整数字段，空值返回 default"""
+    val = row.get(col)
+    if pd.isna(val) or str(val).strip() == "":
+        return default
+    return int(float(str(val).strip()))
+
+
+def _safe_str(row, col: str, default: str = "") -> str:
+    """安全读取字符串字段，空值返回 default"""
+    val = row.get(col)
+    if pd.isna(val) or str(val).strip() == "":
+        return default
+    return str(val).strip()
+
+
+def load_lot_constraints(filepath: str) -> list[LotConstraint]:
+    """加载 lot_constraints.csv，支持多段 hold_period（动态列）
+    格式: lot_name, reference_lot, reference_step, start_mod, start_step, hold_period_1_start, hold_period_1_end, ...
+    """
+    df = _read_csv(filepath)
+    constraints = []
+    col_names = list(df.columns)
+    for _, row in df.iterrows():
+        lot_name = _safe_str(row, "lot_name")
+        if not lot_name:
+            continue
+
+        reference_lot = _safe_str(row, "reference_lot")
+        if not reference_lot:
+            reference_lot = None
+        reference_step = _safe_str(row, "reference_step")
+        if not reference_step:
+            reference_step = None
+        start_mod = _safe_str(row, "start_mod")
+        if not start_mod:
+            start_mod = None
+        start_step = _safe_str(row, "start_step")
+        if not start_step:
+            start_step = None
+
+        # 解析 hold_periods: 多列对 hold_period_N_start, hold_period_N_end
+        hold_periods = []
+        hold_cols = [c for c in col_names if c.startswith("hold_period_") and c.endswith("_start")]
+        for start_col in hold_cols:
+            end_col = start_col.replace("_start", "_end")
+            if end_col in col_names:
+                hs = parse_datetime(row.get(start_col))
+                he = parse_datetime(row.get(end_col))
+                if hs is not None or he is not None:
+                    hold_periods.append((hs, he))
+
+        constraints.append(LotConstraint(
+            lot_name=lot_name,
+            reference_lot=reference_lot,
+            reference_step=reference_step,
+            start_mod=start_mod,
+            start_step=start_step,
+            hold_periods=hold_periods,
+        ))
+    return constraints
+
+
+def load_lot_list(filepath: str, constraints_filepath: Optional[str] = None) -> list[Lot]:
+    """加载 lot_list.csv（含 start_time 列），约束字段从 lot_constraints.csv 合并"""
+    df = _read_csv(filepath)
+
+    # 加载约束
+    all_constraints = []
+    if constraints_filepath:
+        all_constraints = load_lot_constraints(constraints_filepath)
+
+    # 按 lot_name 分组约束
+    constraints_by_lot: dict[str, list[LotConstraint]] = {}
+    for c in all_constraints:
+        if c.lot_name not in constraints_by_lot:
+            constraints_by_lot[c.lot_name] = []
+        constraints_by_lot[c.lot_name].append(c)
+
+    lots = []
+    for _, row in df.iterrows():
+        lot_name = _safe_str(row, "lot_name")
+        target = _safe_str(row, "target_step")
+        if not target:
+            target = None
+
+        # 合并该 lot 的约束（hold_periods 去重，防止重复扣留同一时段）
+        lot_constraints = constraints_by_lot.get(lot_name, [])
+        references = []
+        merged_start_time = None
+        merged_hold_periods: list[tuple] = []
+        seen_hold: set = set()
+
+        # 1. 优先从 lot_list.csv 读取 start_time
+        lot_start_time = parse_datetime(row.get("start_time")) if "start_time" in row.index else None
+        if lot_start_time is not None:
+            merged_start_time = lot_start_time
+
+        for c in lot_constraints:
+            # reference 依赖（保留每个 reference 的 start_step）
+            if c.reference_lot:
+                references.append(c)
+            # hold_periods: 合并（去重）
+            for hp in c.hold_periods:
+                if hp not in seen_hold:
+                    seen_hold.add(hp)
+                    merged_hold_periods.append(hp)
+
+        # start_step 不再合并到 lot 级别，保留在每个 reference 的 LotConstraint 中
+        # 排程引擎会按 per-reference start_step 处理阻塞逻辑
+
+        lots.append(Lot(
+            lot_name=lot_name,
+            priority=parse_priority(str(row["priority"])),
+            qty=int(row["qty"]),
+            carrier_id=_safe_str(row, "carrier_id"),
+            current_step_name=_safe_str(row, "step_name"),
+            product_name=_safe_str(row, "product_name"),
+            target_step=target,
+            lot_state=_safe_str(row, "lot_state"),
+            running_time=_safe_int(row, "running_time"),
+            references=references,
+            start_time=merged_start_time,
+            start_step=None,  # per-reference start_step 在每个 reference 中
+            hold_periods=merged_hold_periods,
+            planned_end=parse_datetime(row.get("planned_end")) if "planned_end" in row.index else None,
+        ))
+    return lots
+
+
+def load_flow(filepath: str) -> list[FlowStep]:
+    """加载 flow.csv，自动合并同 product+step_number 的 eqp_id"""
+    df = _read_csv(filepath)
+    # 使用 (product_name, step_number) 去重合并 eqp_ids
+    merged: dict[tuple[str, str], tuple[str, list[str]]] = {}
+    stage_names: dict[tuple[str, str], str] = {}
+    for _, row in df.iterrows():
+        product_name = str(row["product_name"]).strip()
+        step_number = str(row["step_number"]).strip()
+        step_name = str(row["step_name"]).strip()
+        stage_name = _safe_str(row, "stage_name") if "stage_name" in row.index else ""
+        eqp_str = str(row.get("eqp_id", "")).strip() if pd.notna(row.get("eqp_id")) else ""
+        # 空值必须用空列表（"" 会让下游 `e in raw_allowed` 退化为子串匹配）
+        eqp_ids = [e.strip() for e in eqp_str.split(",") if e.strip()] if eqp_str else []
+
+        key = (product_name, step_number)
+        if key in merged:
+            # 合并 eqp_ids，保持顺序去重
+            existing_name, existing_eqps = merged[key]
+            for eid in eqp_ids:
+                if eid not in existing_eqps:
+                    existing_eqps.append(eid)
+        else:
+            merged[key] = (step_name, eqp_ids)
+            if stage_name:
+                stage_names[key] = stage_name
+
+    steps = []
+    for (product_name, step_number), (step_name, eqp_ids) in merged.items():
+        key = (product_name, step_number)
+        steps.append(FlowStep(
+            product_name=product_name,
+            step_number=step_number,
+            step_name=step_name,
+            stage_name=stage_names.get(key, ""),
+            eqp_ids=eqp_ids,
+        ))
+    return steps
+
+
+def load_step_ct(filepath: str) -> list[StepCT]:
+    """加载 step_ct.csv"""
+    df = _read_csv(filepath)
+    cts = []
+    for _, row in df.iterrows():
+        cts.append(StepCT(
+            product_name=str(row["product_name"]).strip(),
+            step_number=str(row["step_number"]).strip(),
+            step_name=str(row["step_name"]).strip(),
+            qty=int(row["qty"]),
+            step_ct=float(row["step_ct"]),
+        ))
+    return cts
+
+
+def load_qtime(filepath: str) -> list[QTimeConstraint]:
+    """加载 qtime.csv"""
+    df = _read_csv(filepath)
+    constraints = []
+    for _, row in df.iterrows():
+        constraints.append(QTimeConstraint(
+            product_name=str(row["product_name"]).strip(),
+            start_step=str(row["Q-time_start"]).strip(),
+            end_step=str(row["Q-time_end"]).strip(),
+            start_mod=str(row["Q-time_start_mod"]).strip(),
+            end_mod=str(row["Q-time_end_mod"]).strip(),
+            max_duration=int(row["Q-time"]),
+        ))
+    return constraints
+
+
+def build_ct_lookup(step_cts: list[StepCT]) -> dict[tuple[str, str, int], float]:
+    """构建 CT 查找表: (product, step_number, qty) → ct"""
+    lookup = {}
+    for ct in step_cts:
+        lookup[(ct.product_name, ct.step_number, ct.qty)] = ct.step_ct
+    return lookup
+
+
+def auto_repair_step_ct(flows: list[FlowStep], step_cts: list[StepCT],
+                        step_ct_filepath: str | None = None) -> list[StepCT]:
+    """修复 bug: 当用户手动编辑 flow.csv（比如为 step 增删设备或新增 step）
+    但未同步 step_ct.csv 时，schedule() 会因找不到 CT 报错"没有 flow / 找不到 CT 数据"。
+
+    策略：
+      1. 找出所有在 flow.csv 中存在、但在 step_ct.csv 中 (product, step_number)
+         组合完全没有记录的 steps。
+      2. 对缺失的 step，采用同 product 同 stage 的已有 step 的 3/8/13 片 CT
+         做锚点均值，再线性插值生成 1-13 片的全部 CT，追加回 step_cts。
+      3. 若 step_ct_filepath 不为 None，还会把补全后的内容回写 step_ct.csv，
+         下次直接读就不会再"要去 step_ct 保存一次"了。
+    """
+    from collections import defaultdict
+
+    existing_keys: set[tuple[str, str]] = set()
+    for ct in step_cts:
+        existing_keys.add((ct.product_name, ct.step_number))
+
+    missing_steps: list[FlowStep] = []
+    for s in flows:
+        if (s.product_name, s.step_number) not in existing_keys:
+            missing_steps.append(s)
+
+    if not missing_steps:
+        return step_cts
+
+    print(f"[data_loader.auto_repair_step_ct] 检测到 step_ct.csv 缺失 {len(missing_steps)} 个步骤，")
+    print(f"    （例如用户刚改完 flow.csv 但没保存 step_ct.csv）自动生成 CT 并回写：")
+    for s in missing_steps:
+        print(f"      - {s.product_name} / {s.step_name} ({s.step_number})")
+
+    # 收集同 product 同 stage 的锚点(3,8,13) -> ct
+    anchors_by_group: dict[tuple[str, str], dict[int, list[float]]] = defaultdict(lambda: defaultdict(list))
+    for s in flows:
+        for ct_qty in (3, 8, 13):
+            v = next((c.step_ct for c in step_cts
+                      if c.product_name == s.product_name
+                      and c.step_number == s.step_number
+                      and c.qty == ct_qty), None)
+            if v is not None:
+                anchors_by_group[(s.product_name, s.stage_name or "")][ct_qty].append(v)
+
+    def _simple_interp(ct3: float | None, ct8: float | None, ct13: float | None) -> dict[int, float]:
+        anchors = []
+        if ct3 is not None: anchors.append((3, ct3))
+        if ct8 is not None: anchors.append((8, ct8))
+        if ct13 is not None: anchors.append((13, ct13))
+        if not anchors:
+            return {qty: 0.0 for qty in range(1, 14)}
+        if len(anchors) == 1:
+            return {qty: anchors[0][1] for qty in range(1, 14)}
+        result = {}
+        for qty in range(1, 14):
+            if qty <= anchors[0][0]:
+                a, b = anchors[0], anchors[1]
+                val = a[1] + (b[1] - a[1]) / (b[0] - a[0]) * (qty - a[0])
+            elif qty >= anchors[-1][0]:
+                a, b = anchors[-2], anchors[-1]
+                val = a[1] + (b[1] - a[1]) / (b[0] - a[0]) * (qty - a[0])
+            else:
+                for i in range(len(anchors) - 1):
+                    if anchors[i][0] <= qty <= anchors[i + 1][0]:
+                        a, b = anchors[i], anchors[i + 1]
+                        val = a[1] + (b[1] - a[1]) / (b[0] - a[0]) * (qty - a[0])
+                        break
+                else:
+                    val = anchors[-1][1]
+            result[qty] = round(max(0.0, val), 2)
+        return result
+
+    new_cts: list[StepCT] = list(step_cts)
+    for s in missing_steps:
+        grp = anchors_by_group.get((s.product_name, s.stage_name or ""))
+        ct3 = round(sum(grp[3]) / len(grp[3]), 2) if grp and grp[3] else None
+        ct8 = round(sum(grp[8]) / len(grp[8]), 2) if grp and grp[8] else None
+        ct13 = round(sum(grp[13]) / len(grp[13]), 2) if grp and grp[13] else None
+        # 如果 stage 下没任何已知 step，回退整个 product 的平均
+        if ct3 is None and ct8 is None and ct13 is None:
+            fallback = defaultdict(list)
+            for ct in step_cts:
+                if ct.product_name == s.product_name and ct.qty in (3, 8, 13):
+                    fallback[ct.qty].append(ct.step_ct)
+            ct3 = round(sum(fallback[3]) / len(fallback[3]), 2) if fallback[3] else None
+            ct8 = round(sum(fallback[8]) / len(fallback[8]), 2) if fallback[8] else None
+            ct13 = round(sum(fallback[13]) / len(fallback[13]), 2) if fallback[13] else None
+        ct_map = _simple_interp(ct3, ct8, ct13)
+        for qty in range(1, 14):
+            new_cts.append(StepCT(
+                product_name=s.product_name,
+                step_number=s.step_number,
+                step_name=s.step_name,
+                qty=qty,
+                step_ct=ct_map[qty],
+            ))
+
+    if step_ct_filepath:
+        # 回写到 step_ct.csv，保证下次读取直接有
+        # 容错：文件被占用（Excel 锁）/无写权限时只告警，内存补全仍然生效
+        rows = []
+        for c in new_cts:
+            rows.append({
+                "product_name": c.product_name,
+                "step_number": c.step_number,
+                "step_name": c.step_name,
+                "qty": str(c.qty),
+                "step_ct": f"{c.step_ct:.2f}",
+            })
+        import pandas as pd
+        try:
+            df = pd.DataFrame(rows, columns=["product_name", "step_number", "step_name", "qty", "step_ct"])
+            df.to_csv(step_ct_filepath, index=False, sep="\t")
+            print(f"    ✅ 已自动回写到 step_ct.csv ({len(rows)} 行)，下次无需手动再保存")
+        except (PermissionError, OSError) as e:
+            print(f"    ⚠ 回写 {step_ct_filepath} 失败（{e}），本次仅内存补全")
+
+    return new_cts
+
+
+def get_step_ct(lookup: dict, product: str, step_number: str, qty: int) -> float:
+    """
+    查找 CT，支持精确匹配和最近 qty 插值
+    """
+    key = (product, step_number, qty)
+    if key in lookup:
+        return lookup[key]
+
+    # 查找该 product+step 的所有 qty
+    available_qties = sorted([k[2] for k in lookup if k[0] == product and k[1] == step_number])
+    if not available_qties:
+        raise ValueError(f"未找到 CT 数据: product={product}, step={step_number}")
+
+    if qty < available_qties[0]:
+        return lookup[(product, step_number, available_qties[0])]
+    if qty > available_qties[-1]:
+        # 超过最大 qty（13）时，按边际 CT 外推：CT(N) = CT(13) + (N-13) * (CT(13)-CT(12))
+        max_qty = available_qties[-1]
+        ct_max = lookup[(product, step_number, max_qty)]
+        if len(available_qties) >= 2:
+            prev_qty = available_qties[-2]
+            ct_prev = lookup[(product, step_number, prev_qty)]
+            per_piece_ct = (ct_max - ct_prev) / (max_qty - prev_qty)
+        else:
+            # 只有一个数据点，按平均 CT/pcs 外推
+            per_piece_ct = ct_max / max_qty
+        return round(ct_max + (qty - max_qty) * per_piece_ct, 2)
+
+    # 找最近的两个 qty 进行线性插值
+    for i in range(len(available_qties) - 1):
+        if available_qties[i] <= qty <= available_qties[i + 1]:
+            q1, q2 = available_qties[i], available_qties[i + 1]
+            ct1 = lookup[(product, step_number, q1)]
+            ct2 = lookup[(product, step_number, q2)]
+            if q1 == q2:
+                return ct1
+            return round(ct1 + (ct2 - ct1) * (qty - q1) / (q2 - q1), 2)
+
+    return lookup[(product, step_number, available_qties[-1])]
+
+
+def get_product_flow_map(flows: list[FlowStep]) -> dict[str, list[FlowStep]]:
+    """构建产品流程映射: product_name → 排序后的 FlowStep 列表"""
+    flow_map = {}
+    for f in flows:
+        if f.product_name not in flow_map:
+            flow_map[f.product_name] = []
+        flow_map[f.product_name].append(f)
+    # 按 step_number 排序
+    for product in flow_map:
+        flow_map[product].sort(key=lambda x: tuple(int(n) for n in x.step_number.split(".")))
+    return flow_map
+
+
+def get_step_index_in_flow(flow_steps: list[FlowStep], step_name: str) -> int:
+    """根据 step_name 查找在 flow 中的索引"""
+    for i, step in enumerate(flow_steps):
+        if step.step_name == step_name:
+            return i
+    raise ValueError(f"未在 flow 中找到步骤: {step_name}")
+
+
+def load_ftf_qty_change(filepath: str) -> dict[str, tuple[int, int, str]]:
+    """加载 FTF qty 变化表，返回 {product_name: (input_number, output_number, change_step)}"""
+    import math
+    df = _read_csv(filepath)
+    result = {}
+    for _, row in df.iterrows():
+        product = str(row["product_name"]).strip()
+        input_num = int(row["input_number"])
+        output_num = int(row["output_number"])
+        change_step = _safe_str(row, "change_step", "FTF-INPUT-TO-OUTPUT")
+        result[product] = (input_num, output_num, change_step)
+    return result
+
+
+def load_special_lot_step(filepath: str) -> dict[tuple[str, str], SpecialLotStep]:
+    """加载 Lot 级特殊 CT/设备覆盖表 (special_lot_step.csv)
+    返回 {(lot_name, step_name): SpecialLotStep}
+    字段: lot_name, step_name, special_ct, special_eqp
+    - special_ct: 空=使用原 CT, 数值=覆盖 CT（分钟）
+    - special_eqp: 空=不限制设备, 逗号分隔的设备ID=限定可用设备
+    """
+    df = _read_csv(filepath)
+    result = {}
+    for _, row in df.iterrows():
+        lot_name = str(row["lot_name"]).strip()
+        step_name = str(row["step_name"]).strip()
+        # special_ct: 空或0表示缺省
+        ct_str = _safe_str(row, "special_ct")
+        special_ct = float(ct_str) if ct_str and ct_str not in ("0", "0.0") else None
+        # special_eqp: 逗号分隔的设备列表
+        eqp_str = _safe_str(row, "special_eqp")
+        special_eqp = [e.strip() for e in eqp_str.split(",") if e.strip()] if eqp_str else []
+        result[(lot_name, step_name)] = SpecialLotStep(
+            lot_name=lot_name,
+            step_name=step_name,
+            special_ct=special_ct,
+            special_eqp=special_eqp,
+        )
+    return result
+
+
+def load_priority_wait(filepath: str) -> dict[tuple[int, int], int]:
+    """加载优先级-Wait时间映射表，返回 {(ext_priority, int_priority): wait_time}
+    支持两种格式：
+    1. 三列: ext_priority, int_priority, wait_time（精确到内部优先级）
+    2. 两列: ext_priority, wait_time（兼容旧格式，内部优先级不区分）
+    """
+    df = _read_csv(filepath)
+    result: dict[tuple[int, int], int] = {}
+    has_int_priority = "int_priority" in df.columns
+    for _, row in df.iterrows():
+        ext_priority = int(row["ext_priority"])
+        wait_time = int(row["wait_time"])
+        if has_int_priority:
+            int_priority = int(row["int_priority"])
+            result[(ext_priority, int_priority)] = wait_time
+        else:
+            # 旧格式：所有内部优先级使用相同 wait_time
+            for ip in range(1, 10):
+                result[(ext_priority, ip)] = wait_time
+    return result
+
+
+def load_eqp_constraints(filepath: str) -> list[EqpConstraint]:
+    """加载设备不可用约束 eqp_constraint.csv
+    字段: eqp_name, no_used_start_time, no_used_end_time, date, week
+    - date: 空=无效, -1=每天, yyyy/mm/dd=指定日期
+    - week: 1-7(周一到周日), 空=无约束
+    - date 和 week 都填以 date 为准
+    """
+    df = _read_csv(filepath)
+    constraints = []
+    for _, row in df.iterrows():
+        eqp_name = _safe_str(row, "eqp_name")
+        if not eqp_name:
+            continue
+
+        start_time = _safe_str(row, "no_used_start_time")
+        end_time = _safe_str(row, "no_used_end_time")
+        if not start_time or not end_time:
+            continue  # 时间段无效，跳过
+
+        date_str = _safe_str(row, "date")
+        week_str = _safe_str(row, "week")
+
+        # date 和 week 都为空 → 无效，跳过
+        if not date_str and not week_str:
+            continue
+
+        week = None
+        if week_str:
+            try:
+                week = int(week_str)
+                if week < 1 or week > 7:
+                    week = None
+            except ValueError:
+                week = None
+
+        constraints.append(EqpConstraint(
+            eqp_name=eqp_name,
+            start_time_str=start_time,
+            end_time_str=end_time,
+            date_str=date_str if date_str else None,
+            week=week,
+        ))
+    return constraints
+
+
+def load_step_time_windows(filepath: str) -> list[StepTimeWindow]:
+    """加载步骤可作业时间窗口 step_time_window.csv
+    字段: step_name, start_time, end_time, day, end_start_time, end_end_time, end_day
+    - day / end_day: 空=无效, -1=每天, yyyy/mm/dd=指定日期, 1-7=周几
+    """
+    df = _read_csv(filepath)
+    windows = []
+    for _, row in df.iterrows():
+        step_name = _safe_str(row, "step_name")
+        if not step_name:
+            continue
+        start_time = _safe_str(row, "start_time")
+        end_time = _safe_str(row, "end_time")
+        if not start_time or not end_time:
+            continue
+        day_str = _safe_str(row, "day")
+        if not day_str:
+            continue
+
+        week = None
+        if day_str not in ("-1", "") and not day_str.startswith("20"):
+            try:
+                w = int(day_str)
+                if 1 <= w <= 7:
+                    week = w
+            except ValueError:
+                pass
+
+        # 结束时间窗
+        end_start_time = _safe_str(row, "end_start_time")
+        end_end_time = _safe_str(row, "end_end_time")
+        end_day_str = _safe_str(row, "end_day")
+
+        end_week = None
+        if end_day_str and end_day_str not in ("-1", "") and not end_day_str.startswith("20"):
+            try:
+                w = int(end_day_str)
+                if 1 <= w <= 7:
+                    end_week = w
+            except ValueError:
+                pass
+
+        windows.append(StepTimeWindow(
+            step_name=step_name,
+            start_time_str=start_time,
+            end_time_str=end_time,
+            date_str=day_str if day_str else None,
+            week=week,
+            end_start_time_str=end_start_time if end_start_time else None,
+            end_end_time_str=end_end_time if end_end_time else None,
+            end_date_str=end_day_str if end_day_str else None,
+            end_week=end_week,
+        ))
+    return windows
+
+
+def load_shift_config(filepath: str) -> list[ShiftConfig]:
+    """加载班次配置 shift_config.csv
+    字段: shift_name, start_time (hh:mm)
+    """
+    df = _read_csv(filepath)
+    shifts = []
+    for _, row in df.iterrows():
+        shift_name = _safe_str(row, "shift_name")
+        start_time = _safe_str(row, "start_time")
+        if not shift_name or not start_time:
+            continue
+        shifts.append(ShiftConfig(
+            shift_name=shift_name,
+            start_time_str=start_time,
+        ))
+    return shifts
+
+
+def load_shift_change_times(filepath: str) -> list[ShiftChangeTime]:
+    """加载换班时间窗口 shift_change_time.csv
+    字段: start_time, end_time, day
+    - day: 空=无效, -1=每天, yyyy/mm/dd=指定日期, 1-7=周几
+    """
+    df = _read_csv(filepath)
+    windows = []
+    for _, row in df.iterrows():
+        start_time = _safe_str(row, "start_time")
+        end_time = _safe_str(row, "end_time")
+        if not start_time or not end_time:
+            continue
+        day_str = _safe_str(row, "day")
+        if not day_str:
+            continue
+
+        week = None
+        if day_str not in ("-1", "") and not day_str.startswith("20"):
+            try:
+                w = int(day_str)
+                if 1 <= w <= 7:
+                    week = w
+            except ValueError:
+                pass
+
+        windows.append(ShiftChangeTime(
+            start_time_str=start_time,
+            end_time_str=end_time,
+            date_str=day_str if day_str else None,
+            week=week,
+        ))
+    return windows
+
+
+def load_manual_adjusts(filepath: str) -> list[ManualAdjust]:
+    """加载手动调整约束 manual_adjust.csv
+    字段: lot_name, step_name, delay_to, mode
+    - step_name 为空 = 该 Lot 所有未排步骤延迟
+    - delay_to: yyyy/mm/dd HH:MM 格式
+    - mode: delay=不早于（最早）/ pin=精确锁定
+    """
+    df = _read_csv(filepath)
+    adjusts = []
+    for _, row in df.iterrows():
+        lot_name = _safe_str(row, "lot_name")
+        if not lot_name:
+            continue
+        step_name = _safe_str(row, "step_name")
+        delay_str = _safe_str(row, "delay_to")
+        delay_to = parse_datetime(delay_str) if delay_str else None
+        if delay_to is None:
+            continue
+        mode = _safe_str(row, "mode", "delay").lower()
+        if mode not in ("delay", "pin"):
+            mode = "delay"
+        adjusts.append(ManualAdjust(
+            lot_name=lot_name,
+            step_name=step_name if step_name else None,
+            delay_to=delay_to,
+            mode=mode,
+        ))
+    return adjusts
+
+
+def load_special_eqp(filepath: str) -> dict[str, SpecialEqp]:
+    """加载特殊设备批处理配置 special_eqp.csv
+    字段: eqp_name, max_lots, max_qty, together
+    - together: true/false，是否要求同时开始并锁定设备
+    返回 {eqp_name: SpecialEqp}
+    """
+    df = _read_csv(filepath)
+    result = {}
+    for _, row in df.iterrows():
+        eqp_name = _safe_str(row, "eqp_name")
+        if not eqp_name:
+            continue
+        max_lots = _safe_int(row, "max_lots", 1)
+        max_qty = _safe_int(row, "max_qty", 999999)
+        together_str = _safe_str(row, "together", "false").lower()
+        together = together_str in ("true", "1", "yes")
+        result[eqp_name] = SpecialEqp(
+            eqp_name=eqp_name,
+            max_lots=max_lots,
+            max_qty=max_qty,
+            together=together,
+        )
+    return result

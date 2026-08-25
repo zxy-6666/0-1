@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>排程调度系统</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #333; }
+.container { max-width: 100%; margin: 0 auto; padding: 20px; }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+h1 { font-size: 22px; color: #1a1a2e; }
+.header .nav-links { display: flex; gap: 12px; }
+.header .nav-links a { text-decoration: none; padding: 8px 16px; border-radius: 6px; font-size: 14px; background: #fff; color: #333; border: 1px solid #d9d9d9; transition: all 0.2s; }
+.header .nav-links a:hover { border-color: #4096ff; color: #4096ff; }
+.header .nav-links a.active { background: #4096ff; color: #fff; border-color: #4096ff; }
+.nav-btn { padding: 8px 16px; border-radius: 6px; font-size: 14px; cursor: pointer; background: #fff; color: #722ed1; border: 1px solid #d3adf7; transition: all 0.2s; }
+.nav-btn:hover { background: #f9f0ff; border-color: #722ed1; }
+.nav-btn.shutdown { color: #ff4d4f; border-color: #ffa39e; }
+.nav-btn.shutdown:hover { background: #fff1f0; border-color: #ff4d4f; }
+
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+.toolbar select { padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 14px; min-width: 200px; }
+.toolbar button { padding: 8px 16px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 14px; cursor: pointer; background: #fff; transition: all 0.2s; }
+.toolbar button:hover { border-color: #4096ff; color: #4096ff; }
+.toolbar button.primary { background: #4096ff; color: #fff; border-color: #4096ff; }
+.toolbar button.primary:hover { background: #1677ff; }
+.toolbar button.danger { color: #ff4d4f; border-color: #ff4d4f; }
+.toolbar button.danger:hover { background: #fff1f0; }
+.toolbar button.success { background: #52c41a; color: #fff; border-color: #52c41a; }
+.toolbar button.success:hover { background: #49aa19; }
+
+.upload-zone { border: 2px dashed #d9d9d9; border-radius: 8px; padding: 30px; text-align: center; margin-bottom: 16px; cursor: pointer; transition: all 0.2s; background: #fff; }
+.upload-zone:hover, .upload-zone.drag-over { border-color: #4096ff; background: #f0f5ff; }
+.upload-zone p { color: #999; font-size: 14px; }
+.upload-zone .icon { font-size: 32px; margin-bottom: 8px; }
+
+/* ── 表格容器：独立横向滚动 + 纵向滚动 ── */
+.table-wrapper {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  overflow-x: auto;
+  overflow-y: scroll;
+  max-height: 65vh;
+  border: 1px solid #c0c0c0;
+}
+
+table {
+  border-collapse: collapse;
+  font-size: 13px;
+  table-layout: fixed;
+  width: 100%;
+}
+
+/* ── 表头 ── */
+thead th {
+  background: #f0f5ff;
+  color: #1a1a2e;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 10px 14px;
+  text-align: left;
+  border-right: 1px solid #c0c8d8;
+  border-bottom: 2px solid #4096ff;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  white-space: nowrap;
+  user-select: none;
+}
+thead th:first-child { border-left: 1px solid #c0c8d8; }
+thead th:last-child { border-right: 1px solid #c0c8d8; }
+
+/* 序号列 */
+thead th.col-seq {
+  width: 48px;
+  text-align: center;
+  background: #e8f0fe;
+  color: #666;
+}
+
+/* 列头单位提示 */
+thead th .col-unit {
+  font-weight: 400;
+  color: #999;
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+/* ── 数据行 ── */
+tbody td {
+  padding: 8px 14px;
+  border-right: 1px solid #d0d0d0;
+  border-bottom: 1px solid #d0d0d0;
+  font-family: 'Consolas', 'Courier New', 'Source Code Pro', monospace;
+  font-size: 12.5px;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+tbody td:first-child { border-left: 1px solid #d0d0d0; }
+tbody td:last-child { border-right: 1px solid #d0d0d0; }
+
+/* 序号列 */
+tbody td.col-seq {
+  text-align: center;
+  font-family: inherit;
+  color: #999;
+  font-size: 11px;
+  background: #fafbfc;
+  width: 48px;
+}
+
+/* 可编辑单元格 */
+td[contenteditable="true"] {
+  outline: none;
+  min-width: 100px;
+  cursor: text;
+  transition: background 0.15s;
+}
+td[contenteditable="true"]:hover {
+  background: #fafbfc;
+}
+td[contenteditable="true"]:focus {
+  background: #e6f4ff !important;
+  box-shadow: inset 0 0 0 2px #4096ff;
+  border-radius: 2px;
+}
+
+/* 空值样式 */
+td[contenteditable="true"]:empty::before {
+  content: '—';
+  color: #ccc;
+}
+
+/* 下拉列表单元格 */
+td .cell-select {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 7px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #1a1a2e;
+  cursor: pointer;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+td .cell-select:focus {
+  background: #e6f4ff;
+  box-shadow: inset 0 0 0 2px #4096ff;
+  border-radius: 2px;
+}
+td .cell-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 7px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #1a1a2e;
+  outline: none;
+}
+td .cell-input:focus {
+  background: #e6f4ff;
+  box-shadow: inset 0 0 0 2px #4096ff;
+  border-radius: 2px;
+}
+
+/* 筛选行 */
+.filter-row th {
+  padding: 4px 6px;
+  background: #f5f5f5;
+  border-bottom: 1px solid #e0e0e0;
+}
+.filter-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #333;
+  outline: none;
+  transition: border-color 0.2s;
+  background: #fff;
+}
+.filter-input:focus {
+  border-color: #4096ff;
+  box-shadow: 0 0 0 2px rgba(64, 150, 255, 0.15);
+}
+.filter-input::placeholder {
+  color: #bbb;
+  font-size: 11px;
+}
+.filter-active {
+  border-color: #4096ff !important;
+  background: #e6f4ff !important;
+}
+
+/* 斑马纹 */
+tbody tr:nth-child(even) td {
+  background: #fafbfc;
+}
+tbody tr:nth-child(even) td.col-seq {
+  background: #f0f2f5;
+}
+
+/* 悬停 */
+tbody tr:hover td {
+  background: #f0f5ff !important;
+}
+tbody tr:hover td.col-seq {
+  background: #e0eafc !important;
+}
+
+/* 选中行 */
+tr.selected td {
+  background: #e6f4ff !important;
+}
+tr.selected td.col-seq {
+  background: #bae0ff !important;
+  font-weight: 700;
+  color: #1677ff;
+}
+
+/* ── 空状态 ── */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #bbb;
+  font-size: 14px;
+}
+.empty-state .empty-icon { font-size: 40px; margin-bottom: 12px; }
+
+.status-bar { margin-top: 12px; font-size: 12px; color: #999; }
+
+/* ── Toast ── */
+.toast { position: fixed; top: 20px; right: 20px; padding: 10px 20px; border-radius: 6px; color: #fff; font-size: 14px; z-index: 1000; opacity: 0; transition: opacity 0.3s; }
+.toast.show { opacity: 1; }
+.toast.success { background: #52c41a; }
+.toast.error { background: #ff4d4f; }
+.toast.info { background: #4096ff; }
+
+#fileInput { display: none; }
+
+/* ── 表分类标签 ── */
+.table-categories { display: flex; gap: 16px; flex-wrap: wrap; }
+.table-category { display: flex; align-items: center; gap: 8px; }
+.cat-tag { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; color: #fff; white-space: nowrap; }
+.cat-basic { background: #4096ff; }
+.cat-regular { background: #52c41a; }
+.cat-special { background: #fa8c16; }
+.cat-select { padding: 6px 10px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 13px; min-width: 180px; }
+.toolbar-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+/* ── Flow 导入区域 ── */
+.flow-import-section { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border: 1px solid #e8e8e8; }
+.flow-import-section h3 { font-size: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+.flow-import-section .subtitle { font-size: 12px; color: #999; font-weight: normal; }
+.flow-import-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.flow-import-actions .zone-sm { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 2px dashed #d9d9d9; border-radius: 6px; cursor: pointer; font-size: 13px; color: #666; transition: all 0.2s; }
+.flow-import-actions .zone-sm:hover { border-color: #4096ff; color: #4096ff; background: #f0f5ff; }
+.flow-import-files { margin-top: 10px; font-size: 13px; }
+.flow-import-files .file-item { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: #f5f5f5; border-radius: 4px; margin: 2px 4px 2px 0; }
+.flow-import-files .file-item .del-file { cursor: pointer; color: #ff4d4f; font-weight: bold; font-size: 14px; }
+.flow-import-files .file-item .del-file:hover { color: #d9363e; }
+.flow-import-result { margin-top: 12px; padding: 10px 14px; border-radius: 6px; font-size: 13px; display: none; }
+.flow-import-result.show { display: block; }
+.flow-import-result.success { background: #f6ffed; border: 1px solid #b7eb8f; }
+.flow-import-result.error { background: #fff2f0; border: 1px solid #ffccc7; }
+.flow-import-result .result-title { font-weight: 600; margin-bottom: 6px; }
+.flow-import-result .result-detail { font-size: 12px; color: #666; line-height: 1.6; }
+
+/* ── 配置侧边面板 ── */
+.config-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.35); z-index: 900; display: none; transition: opacity 0.3s; }
+.config-overlay.show { display: block; }
+.config-panel { position: fixed; top: 0; right: -520px; width: 500px; max-width: 95vw; height: 100vh; background: #fff; z-index: 901; box-shadow: -4px 0 20px rgba(0,0,0,0.15); transition: right 0.3s ease; display: flex; flex-direction: column; }
+.config-panel.show { right: 0; }
+.config-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 18px 24px; border-bottom: 1px solid #e8e8e8; background: #fafbfc; }
+.config-panel-header h2 { margin: 0; font-size: 17px; color: #722ed1; }
+.config-panel-header .close-btn { background: none; border: none; font-size: 22px; cursor: pointer; color: #999; padding: 4px 8px; border-radius: 4px; }
+.config-panel-header .close-btn:hover { background: #f0f0f0; color: #333; }
+.config-panel-body { flex: 1; overflow-y: auto; padding: 16px 24px; }
+.config-panel-footer { padding: 14px 24px; border-top: 1px solid #e8e8e8; display: flex; gap: 10px; background: #fafbfc; }
+.config-group { margin-bottom: 16px; border: 1px solid #f0f0f0; border-radius: 8px; overflow: hidden; }
+.config-group-header { padding: 10px 16px; background: #fafbfc; cursor: pointer; font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; user-select: none; }
+.config-group-header .arrow { font-size: 10px; transition: transform 0.2s; }
+.config-group.open .config-group-header .arrow { transform: rotate(90deg); }
+.config-group-body { display: none; padding: 0 16px 12px; }
+.config-group.open .config-group-body { display: block; }
+.config-param { padding: 8px 0; border-bottom: 1px solid #f5f5f5; }
+.config-param:last-child { border-bottom: none; }
+.config-param label { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+.config-param .param-name { font-weight: 500; color: #333; }
+.config-param .param-desc { font-size: 11px; color: #999; margin-top: 2px; }
+.config-param .param-hints { font-size: 11px; margin-top: 4px; }
+.config-param .param-hints .hint-up { color: #059669; }
+.config-param .param-hints .hint-down { color: #dc2626; }
+.config-param input[type=range] { width: 140px; accent-color: #722ed1; }
+.config-param input[type=number] { width: 72px; padding: 4px 6px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 12px; text-align: right; }
+.config-param input[type=number]:focus { outline: none; border-color: #722ed1; }
+.config-toggle { position: relative; display: inline-block; width: 36px; height: 20px; }
+.config-toggle input { opacity: 0; width: 0; height: 0; }
+.config-toggle .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #cbd5e1; border-radius: 20px; transition: 0.3s; }
+.config-toggle .slider::before { content: ''; position: absolute; height: 14px; width: 14px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: 0.3s; }
+.config-toggle input:checked + .slider { background: #722ed1; }
+.config-toggle input:checked + .slider::before { transform: translateX(16px); }
+.config-status { margin-top: 12px; font-size: 12px; color: #52c41a; display: none; }
+.config-status.show { display: block; }
+.config-status.error { color: #ff4d4f; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>排程调度系统</h1>
+    <div class="nav-links">
+      <a href="/" class="active">数据管理</a>
+      <a href="/reports">可视化报表</a>
+      <button id="configBtn" class="nav-btn" title="算法参数配置">&#9881; 算法配置</button>
+      <button id="shutdownBtn" class="nav-btn shutdown" title="关闭本地服务并退出程序">&#128682; 退出程序</button>
+    </div>
+  </div>
+
+  <div class="upload-zone" id="uploadZone">
+    <div class="icon">&#128196;</div>
+    <p>拖拽文件到此处或点击上传 (.xlsx 或 .csv)</p>
+    <input type="file" id="fileInput" accept=".xlsx,.csv">
+  </div>
+
+  <!-- Flow 原始数据导入 -->
+  <div class="flow-import-section">
+    <h3>Flow 原始数据导入 <span class="subtitle">上传含 3/8/13pcs CT 的原始 flow 文件（.xlsx/.csv），自动转换为系统数据格式</span></h3>
+    <div class="flow-import-actions">
+      <label class="zone-sm" id="flowUploadZone">
+        <span>&#128194;</span> 选择文件（可多选）
+        <input type="file" id="flowFileInput" accept=".csv,.xlsx,.xls" multiple style="display:none">
+      </label>
+      <button id="flowConvertBtn" class="primary" disabled>转换导入</button>
+      <button id="flowClearBtn" class="danger" style="font-size:12px;">清空待导入</button>
+    </div>
+    <div class="flow-import-files" id="flowImportFiles">
+      <span style="color:#999;">暂无待导入文件</span>
+    </div>
+    <div class="flow-import-result" id="flowImportResult"></div>
+  </div>
+
+  <div class="toolbar" style="flex-direction: column; align-items: stretch; gap: 12px;">
+    <div class="table-categories">
+      <div class="table-category">
+        <span class="cat-tag cat-regular">常规配置</span>
+        <select id="regularTableSelector" class="cat-select">
+          <option value="">-- 选择表 --</option>
+        </select>
+      </div>
+      <div class="table-category">
+        <span class="cat-tag cat-basic">基本配置</span>
+        <select id="basicTableSelector" class="cat-select">
+          <option value="">-- 选择表 --</option>
+        </select>
+      </div>
+      <div class="table-category">
+        <span class="cat-tag cat-special">特殊配置</span>
+        <select id="specialTableSelector" class="cat-select">
+          <option value="">-- 选择表 --</option>
+        </select>
+      </div>
+    </div>
+    <div class="toolbar-actions">
+      <button id="addRowBtn" class="primary" disabled>+ 添加行</button>
+      <button id="deleteRowBtn" class="danger" disabled>删除选中行</button>
+      <button id="saveBtn" class="success" disabled>保存</button>
+      <button id="downloadBtn" disabled>下载 CSV</button>
+    </div>
+  </div>
+
+  <div class="table-wrapper">
+    <table id="dataTable">
+      <thead id="tableHead"></thead>
+      <tbody id="tableBody">
+        <tr><td colspan="100"><div class="empty-state"><div class="empty-icon">&#128203;</div>选择上方数据表开始编辑</div></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="status-bar" id="statusBar">就绪</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ── 算法配置侧边面板 ── -->
+<div class="config-overlay" id="configOverlay"></div>
+<div class="config-panel" id="configPanel">
+  <div class="config-panel-header">
+    <h2>&#9881; SA+Tabu 算法参数配置</h2>
+    <button class="close-btn" id="configCloseBtn">&times;</button>
+  </div>
+  <div class="config-panel-body" id="configPanelBody">
+    <div style="text-align:center;padding:40px;color:#999;">加载中...</div>
+  </div>
+  <div class="config-panel-footer">
+    <button class="primary" style="padding:8px 18px;background:#722ed1;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;" id="configSaveBtn">保存配置</button>
+    <button style="padding:8px 18px;background:#fff;color:#666;border:1px solid #d9d9d9;border-radius:6px;cursor:pointer;font-size:13px;" id="configResetBtn">恢复默认</button>
+    <span class="config-status" id="configStatus"></span>
+  </div>
+</div>
+
+<script>
+const API = '/api';
+let currentTable = '';
+let columns = [];
+let rows = [];
+let selectedRow = -1;
+let filters = {};  // { column_name: filter_text }
+
+const $ = (sel) => document.querySelector(sel);
+
+const uploadZone = $('#uploadZone');
+const fileInput = $('#fileInput');
+const basicTableSelector = $('#basicTableSelector');
+const regularTableSelector = $('#regularTableSelector');
+const specialTableSelector = $('#specialTableSelector');
+const addRowBtn = $('#addRowBtn');
+const deleteRowBtn = $('#deleteRowBtn');
+const saveBtn = $('#saveBtn');
+const downloadBtn = $('#downloadBtn');
+const tableHead = $('#tableHead');
+const tableBody = $('#tableBody');
+const statusBar = $('#statusBar');
+const toast = $('#toast');
+
+// 表分类定义
+const BASIC_TABLES = ['flow.csv', 'step_ct.csv', 'ftf_qty_change.csv', 'priority_wait.csv', 'qtime.csv', 'shift_change_time.csv', 'shift_config.csv'];
+const REGULAR_TABLES = ['eqp_constraint.csv', 'lot_list.csv'];
+const SPECIAL_TABLES = ['lot_constraints.csv', 'manual_adjust.csv', 'special_lot_step.csv', 'step_time_window.csv', 'special_eqp.csv'];
+
+// 下拉列配置：{ 表名: { 列名: { type: 'select'|'datalist', options: [[value, label], ...] } } }
+const DROPDOWN_COLUMNS = {
+  'eqp_constraint.csv': {
+    'date': { type: 'datalist', options: [['-1', '每天']] },
+    'week': { type: 'select', options: [['', '无'], ['1', '周一'], ['2', '周二'], ['3', '周三'], ['4', '周四'], ['5', '周五'], ['6', '周六'], ['7', '周日']] }
+  },
+  'step_time_window.csv': {
+    'day': { type: 'select', options: [['-1', '每天'], ['1', '周一'], ['2', '周二'], ['3', '周三'], ['4', '周四'], ['5', '周五'], ['6', '周六'], ['7', '周日']] },
+    'end_day': { type: 'select', options: [['', '无'], ['-1', '每天'], ['1', '周一'], ['2', '周二'], ['3', '周三'], ['4', '周四'], ['5', '周五'], ['6', '周六'], ['7', '周日']] }
+  },
+  'shift_change_time.csv': {
+    'day': { type: 'select', options: [['-1', '每天'], ['1', '周一'], ['2', '周二'], ['3', '周三'], ['4', '周四'], ['5', '周五'], ['6', '周六'], ['7', '周日']] }
+  },
+  'lot_constraints.csv': {
+    'start_mod': { type: 'datalist', options: [['', '无偏移'], ['0.5', '0.5小时'], ['1', '1小时'], ['2', '2小时'], ['4', '4小时'], ['shift', 'shift（下一班次）'], ['shift_day', 'shift_day（下一白班）']] }
+  },
+  'manual_adjust.csv': {
+    'start_mod': { type: 'datalist', options: [['', '无偏移'], ['0.5', '0.5小时'], ['1', '1小时'], ['2', '2小时'], ['4', '4小时'], ['shift', 'shift（下一班次）'], ['shift_day', 'shift_day（下一白班）']] }
+  }
+};
+
+// 列头单位提示：{ 表名: { 列名: '单位' } }
+const UNIT_HINTS = {
+  'lot_list.csv': { 'running_time': '分钟' }
+};
+
+function showToast(msg, type) {
+  toast.textContent = msg;
+  toast.className = 'toast ' + type + ' show';
+  setTimeout(() => { toast.className = 'toast'; }, 2500);
+}
+
+function setStatus(msg) { statusBar.textContent = msg; }
+
+// Load tables
+async function loadTables() {
+  try {
+    const res = await fetch(API + '/tables');
+    const names = await res.json();
+    const basicOpts = ['<option value="">-- 选择表 --</option>'];
+    const regularOpts = ['<option value="">-- 选择表 --</option>'];
+    const specialOpts = ['<option value="">-- 选择表 --</option>'];
+    names.forEach(n => {
+      const opt = '<option value="' + n + '">' + n.replace('.csv', '') + '</option>';
+      if (BASIC_TABLES.includes(n)) {
+        basicOpts.push(opt);
+      } else if (REGULAR_TABLES.includes(n)) {
+        regularOpts.push(opt);
+      } else if (SPECIAL_TABLES.includes(n)) {
+        specialOpts.push(opt);
+      }
+    });
+    basicTableSelector.innerHTML = basicOpts.join('');
+    regularTableSelector.innerHTML = regularOpts.join('');
+    specialTableSelector.innerHTML = specialOpts.join('');
+  } catch (e) {
+    showToast('加载表列表失败', 'error');
+  }
+}
+
+// Load table data
+async function loadTable(name) {
+  try {
+    setStatus('加载中...');
+    const res = await fetch(API + '/table/' + encodeURIComponent(name));
+    const data = await res.json();
+    if (data.error) { showToast(data.error, 'error'); return; }
+    columns = data.columns;
+    rows = data.rows;
+    currentTable = name;
+    selectedRow = -1;
+    filters = {};  // 切换表时清空筛选
+    renderTable();
+    addRowBtn.disabled = false;
+    deleteRowBtn.disabled = false;
+    saveBtn.disabled = false;
+    downloadBtn.disabled = false;
+    setStatus('已加载: ' + name + ' (' + rows.length + ' 行, ' + columns.length + ' 列)');
+  } catch (e) {
+    showToast('加载数据失败', 'error');
+  }
+}
+
+function h(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// 渲染单个单元格，支持下拉列
+function renderCell(table, col, value) {
+  const dd = (DROPDOWN_COLUMNS[table] || {})[col];
+  if (!dd) {
+    return '<td contenteditable="true">' + h(String(value ?? '')) + '</td>';
+  }
+  if (dd.type === 'select') {
+    const opts = dd.options.map(([v, label]) => {
+      const sel = String(value ?? '') === v ? ' selected' : '';
+      return '<option value="' + h(v) + '"' + sel + '>' + h(label) + '</option>';
+    }).join('');
+    return '<td><select class="cell-select">' + opts + '</select></td>';
+  }
+  if (dd.type === 'datalist') {
+    const listId = 'dl_' + table.replace(/[^a-zA-Z0-9]/g, '_') + '_' + col;
+    const opts = dd.options.map(([v, label]) => '<option value="' + h(v) + '">' + h(label) + '</option>').join('');
+    return '<td><input class="cell-input" list="' + listId + '" value="' + h(String(value ?? '')) + '">' +
+           '<datalist id="' + listId + '">' + opts + '</datalist></td>';
+  }
+  return '<td contenteditable="true">' + h(String(value ?? '')) + '</td>';
+}
+
+// 计算筛选后的行
+function getFilteredRows() {
+  const activeFilters = Object.entries(filters).filter(([_, v]) => v);
+  if (activeFilters.length === 0) return rows;
+  return rows.filter(row => {
+    return activeFilters.every(([col, val]) => {
+      const cellVal = String(row[col] ?? '').toLowerCase();
+      return cellVal.includes(val.toLowerCase());
+    });
+  });
+}
+
+// 渲染表头（仅在切换表时调用）
+function renderTableHead() {
+  if (columns.length === 0) {
+    tableHead.innerHTML = '';
+    return;
+  }
+
+  tableHead.innerHTML =
+    '<tr><th class="col-seq">#</th>' + columns.map(c => {
+      const unit = (UNIT_HINTS[currentTable] || {})[c];
+      return '<th>' + h(c) + (unit ? '<span class="col-unit">(' + h(unit) + ')</span>' : '') + '</th>';
+    }).join('') + '</tr>' +
+    '<tr class="filter-row"><th class="col-seq"></th>' +
+    columns.map(c => {
+      return '<th><input class="filter-input" data-col="' + h(c) + '" placeholder="筛选..." value=""></th>';
+    }).join('') + '</tr>';
+
+  // 绑定筛选事件（只绑定一次）
+  tableHead.querySelectorAll('.filter-input').forEach(inp => {
+    inp.addEventListener('input', function() {
+      const col = this.dataset.col;
+      const val = this.value;
+      filters[col] = val;
+      // 更新激活态样式
+      if (val) {
+        this.classList.add('filter-active');
+      } else {
+        this.classList.remove('filter-active');
+      }
+      selectedRow = -1;
+      renderTableBody();
+    });
+  });
+}
+
+// 渲染表体（筛选时仅调用此函数）
+function renderTableBody() {
+  if (columns.length === 0) {
+    tableBody.innerHTML = '<tr><td colspan="100"><div class="empty-state"><div class="empty-icon">&#128203;</div>选择上方数据表开始编辑</div></td></tr>';
+    return;
+  }
+
+  const filteredRows = getFilteredRows();
+
+  if (filteredRows.length === 0) {
+    if (rows.length === 0) {
+      tableBody.innerHTML = '<tr><td colspan="' + (columns.length + 1) + '"><div class="empty-state"><div class="empty-icon">&#128203;</div>暂无数据，点击「+ 添加行」添加</div></td></tr>';
+    } else {
+      tableBody.innerHTML = '<tr><td colspan="' + (columns.length + 1) + '"><div class="empty-state"><div class="empty-icon">&#128270;</div>无匹配结果（共 ' + rows.length + ' 行，已筛选 ' + filteredRows.length + ' 行）</div></td></tr>';
+    }
+    return;
+  }
+
+  tableBody.innerHTML = filteredRows.map((row, displayIdx) => {
+    const origIdx = rows.indexOf(row);
+    var cls = (origIdx === selectedRow) ? 'selected' : '';
+    return '<tr class="' + cls + '" data-row="' + origIdx + '">' +
+      '<td class="col-seq">' + (displayIdx + 1) + '</td>' +
+      columns.map(c => renderCell(currentTable, c, row[c])).join('') +
+      '</tr>';
+  }).join('');
+}
+
+// 完整渲染（切换表/上传/添加行/删除行时调用）
+function renderTable() {
+  renderTableHead();
+  renderTableBody();
+}
+
+// Collect data from DOM — 只更新可见行，保留隐藏行原值
+function collectData() {
+  const trs = tableBody.querySelectorAll('tr');
+  trs.forEach(tr => {
+    const origIdx = parseInt(tr.dataset.row);
+    if (isNaN(origIdx) || origIdx < 0 || origIdx >= rows.length) return;
+    const allTds = tr.querySelectorAll('td');
+    if (allTds.length === 0) return;
+    columns.forEach((c, i) => {
+      const td = allTds[i + 1];  // 跳过序号列
+      if (!td) { rows[origIdx][c] = ''; return; }
+      const sel = td.querySelector('select.cell-select');
+      const inp = td.querySelector('input.cell-input');
+      if (sel) {
+        rows[origIdx][c] = sel.value;
+      } else if (inp) {
+        rows[origIdx][c] = inp.value.trim();
+      } else {
+        rows[origIdx][c] = (td.textContent || '').trim();
+      }
+    });
+  });
+}
+
+// Save
+async function saveData() {
+  collectData();
+  try {
+    setStatus('保存中...');
+    const res = await fetch(API + '/save/' + encodeURIComponent(currentTable), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows: rows, columns: columns })
+    });
+    const data = await res.json();
+    if (data.error) { showToast(data.error, 'error'); return; }
+    showToast('保存成功', 'success');
+    renderTable();
+    setStatus('已保存: ' + currentTable + ' (' + rows.length + ' 行)');
+  } catch (e) {
+    showToast('保存失败', 'error');
+  }
+}
+
+// Upload
+uploadZone.addEventListener('click', () => fileInput.click());
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) uploadFile(file);
+});
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files[0];
+  if (file) uploadFile(file);
+  fileInput.value = '';
+});
+
+async function uploadFile(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    setStatus('上传中...');
+    const res = await fetch(API + '/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.error) { showToast(data.error, 'error'); return; }
+    showToast('上传成功', 'success');
+    await loadTables();
+    currentTable = data.name;
+    columns = data.columns;
+    rows = data.rows;
+    selectedRow = -1;
+    filters = {};
+    renderTable();
+    // 设置对应分类的 select 值
+    if (BASIC_TABLES.includes(data.name)) {
+      basicTableSelector.value = data.name;
+      regularTableSelector.value = '';
+      specialTableSelector.value = '';
+    } else if (REGULAR_TABLES.includes(data.name)) {
+      regularTableSelector.value = data.name;
+      basicTableSelector.value = '';
+      specialTableSelector.value = '';
+    } else if (SPECIAL_TABLES.includes(data.name)) {
+      specialTableSelector.value = data.name;
+      basicTableSelector.value = '';
+      regularTableSelector.value = '';
+    }
+    addRowBtn.disabled = false;
+    deleteRowBtn.disabled = false;
+    saveBtn.disabled = false;
+    downloadBtn.disabled = false;
+    setStatus('已上传: ' + data.name + ' (' + rows.length + ' 行)');
+  } catch (e) {
+    showToast('上传失败', 'error');
+  }
+}
+
+// Table selector events
+function onTableSelect(name) {
+  if (name) loadTable(name);
+  else {
+    currentTable = '';
+    columns = [];
+    rows = [];
+    selectedRow = -1;
+    tableHead.innerHTML = '';
+    tableBody.innerHTML = '<tr><td colspan="100"><div class="empty-state"><div class="empty-icon">&#128203;</div>选择上方数据表开始编辑</div></td></tr>';
+    addRowBtn.disabled = true;
+    deleteRowBtn.disabled = true;
+    saveBtn.disabled = true;
+    downloadBtn.disabled = true;
+    setStatus('就绪');
+  }
+}
+basicTableSelector.addEventListener('change', () => {
+  regularTableSelector.value = '';
+  specialTableSelector.value = '';
+  onTableSelect(basicTableSelector.value);
+});
+regularTableSelector.addEventListener('change', () => {
+  basicTableSelector.value = '';
+  specialTableSelector.value = '';
+  onTableSelect(regularTableSelector.value);
+});
+specialTableSelector.addEventListener('change', () => {
+  basicTableSelector.value = '';
+  regularTableSelector.value = '';
+  onTableSelect(specialTableSelector.value);
+});
+
+// Row selection
+tableBody.addEventListener('click', e => {
+  const tr = e.target.closest('tr');
+  if (!tr) return;
+  const idx = parseInt(tr.dataset.row);
+  if (idx >= 0) {
+    selectedRow = idx;
+    tableBody.querySelectorAll('tr').forEach(r => r.classList.remove('selected'));
+    tr.classList.add('selected');
+  }
+});
+
+// Add row
+addRowBtn.addEventListener('click', () => {
+  const newRow = {};
+  columns.forEach(c => { newRow[c] = ''; });
+  rows.push(newRow);
+  selectedRow = rows.length - 1;
+  filters = {};  // 清空筛选，确保新行可见
+  renderTableBody();
+  setStatus('已添加新行 (' + rows.length + ' 行)');
+});
+
+// Delete row
+deleteRowBtn.addEventListener('click', () => {
+  if (selectedRow < 0 || selectedRow >= rows.length) return;
+  rows.splice(selectedRow, 1);
+  selectedRow = Math.min(selectedRow, rows.length - 1);
+  renderTableBody();
+  setStatus('已删除行 (' + rows.length + ' 行)');
+});
+
+// Save button
+saveBtn.addEventListener('click', saveData);
+
+// Download button
+downloadBtn.addEventListener('click', () => {
+  if (!currentTable) return;
+  window.open(API + '/download/' + encodeURIComponent(currentTable), '_blank');
+});
+
+// Paste handler for Excel data
+document.addEventListener('paste', e => {
+  const active = document.activeElement;
+  if (!active) return;
+
+  // 允许 contenteditable 单元格、下拉框和输入框
+  const isDataCell = active.hasAttribute('contenteditable') ||
+                     active.classList.contains('cell-select') ||
+                     active.classList.contains('cell-input');
+  if (!isDataCell) return;
+
+  const clipboardData = e.clipboardData;
+  if (!clipboardData) return;
+
+  const text = clipboardData.getData('text/plain');
+  if (!text) return;
+
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length <= 1 && !text.includes('\t')) return;
+
+  e.preventDefault();
+
+  // 如果 active 是 select/input，取其父 td
+  let targetTd = active;
+  if (active.tagName === 'SELECT' || active.tagName === 'INPUT') {
+    targetTd = active.closest('td');
+  }
+  const targetTr = targetTd.parentElement;
+  const targetRowIdx = parseInt(targetTr.dataset.row);
+  const targetColIdx = Array.from(targetTr.querySelectorAll('td:not(.col-seq)')).indexOf(targetTd);
+
+  if (targetRowIdx < 0 || targetColIdx < 0) return;
+
+  const pasteData = lines.map(line => line.split('\t'));
+
+  for (let r = 0; r < pasteData.length; r++) {
+    const rowIdx = targetRowIdx + r;
+    if (rowIdx >= rows.length) {
+      const newRow = {};
+      columns.forEach(c => { newRow[c] = ''; });
+      rows.push(newRow);
+    }
+    for (let c = 0; c < pasteData[r].length; c++) {
+      const colIdx = targetColIdx + c;
+      if (colIdx < columns.length) {
+        rows[rowIdx][columns[colIdx]] = pasteData[r][c].trim();
+      }
+    }
+  }
+
+  renderTable();
+  setStatus('已粘贴 ' + pasteData.length + ' 行 x ' + pasteData[0].length + ' 列数据');
+});
+
+// Keyboard shortcut: Ctrl+S to save
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault();
+    if (currentTable) saveData();
+  }
+});
+
+// ── Flow 原始数据导入 ──
+
+const flowFileInput = $('#flowFileInput');
+const flowConvertBtn = $('#flowConvertBtn');
+const flowClearBtn = $('#flowClearBtn');
+const flowImportFiles = $('#flowImportFiles');
+const flowImportResult = $('#flowImportResult');
+
+// 上传 Flow 文件
+flowFileInput.addEventListener('change', async () => {
+  const files = flowFileInput.files;
+  if (!files || files.length === 0) return;
+  const formData = new FormData();
+  for (const f of files) { formData.append('files', f); }
+  try {
+    setStatus('上传 Flow 文件中...');
+    const res = await fetch(API + '/flow-import/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.error) { showToast(data.error, 'error'); return; }
+    showToast(`已上传 ${data.count} 个文件`, 'success');
+    flowFileInput.value = '';
+    await refreshFlowFiles();
+  } catch (e) {
+    showToast('上传失败', 'error');
+  }
+});
+
+// 刷新待导入文件列表
+async function refreshFlowFiles() {
+  try {
+    const res = await fetch(API + '/flow-import/files');
+    const data = await res.json();
+    const files = data.files || [];
+    if (files.length === 0) {
+      flowImportFiles.innerHTML = '<span style="color:#999;">暂无待导入文件</span>';
+      flowConvertBtn.disabled = true;
+    } else {
+      flowImportFiles.innerHTML = files.map(f =>
+        '<span class="file-item">' +
+        '<strong>' + h(f.product_name) + '</strong>' +
+        ' <span style="color:#999;font-size:11px;">(' + f.name + ')</span>' +
+        ' <span class="del-file" onclick="deleteFlowFile(\'' + h(f.name) + '\')" title="删除">x</span>' +
+        '</span>'
+      ).join('');
+      flowConvertBtn.disabled = false;
+    }
+    setStatus('待导入: ' + files.length + ' 个文件');
+  } catch (e) {
+    showToast('获取文件列表失败', 'error');
+  }
+}
+
+// 删除单个文件
+async function deleteFlowFile(filename) {
+  try {
+    const res = await fetch(API + '/flow-import/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: filename })
+    });
+    const data = await res.json();
+    if (data.error) { showToast(data.error, 'error'); return; }
+    showToast('已删除: ' + filename, 'info');
+    await refreshFlowFiles();
+  } catch (e) {
+    showToast('删除失败', 'error');
+  }
+}
+
+// 清空待导入
+flowClearBtn.addEventListener('click', async () => {
+  if (!confirm('确定清空所有待导入的 Flow 文件吗？')) return;
+  try {
+    const res = await fetch(API + '/flow-import/clear', { method: 'POST' });
+    const data = await res.json();
+    if (data.error) { showToast(data.error, 'error'); return; }
+    showToast('已清空', 'info');
+    flowImportResult.className = 'flow-import-result';
+    flowImportResult.innerHTML = '';
+    await refreshFlowFiles();
+  } catch (e) {
+    showToast('清空失败', 'error');
+  }
+});
+
+// 转换导入
+flowConvertBtn.addEventListener('click', async () => {
+  if (!confirm('将把所有待导入的 Flow 文件转换为系统数据格式，重复的产品将被覆盖。确定继续？')) return;
+  try {
+    flowConvertBtn.disabled = true;
+    setStatus('转换中...');
+    const res = await fetch(API + '/flow-import/convert', { method: 'POST' });
+    const data = await res.json();
+    if (data.error) { showToast(data.error, 'error'); flowConvertBtn.disabled = false; return; }
+
+    // 显示结果
+    const result = data;
+    let html = '';
+    if (result.error_files && result.error_files.length > 0) {
+      html += '<div class="result-title" style="color:#ff4d4f;">部分文件解析失败</div>';
+      html += '<div class="result-detail">失败文件: ' + result.error_files.join(', ') + '</div>';
+    }
+    html += '<div class="result-title" style="color:#52c41a;">导入成功</div>';
+    html += '<div class="result-detail">';
+    if (result.products_added && result.products_added.length > 0) {
+      html += '新增产品: <strong>' + result.products_added.join(', ') + '</strong><br>';
+    }
+    if (result.products_updated && result.products_updated.length > 0) {
+      html += '覆盖更新: <strong>' + result.products_updated.join(', ') + '</strong><br>';
+    }
+    html += 'flow.csv: 新增 ' + result.flow_rows_added + ' 行, 移除旧数据 ' + (result.flow_rows_removed || 0) + ' 行<br>';
+    html += 'step_ct.csv: 新增 ' + result.step_ct_rows_added + ' 行, 移除旧数据 ' + (result.step_ct_rows_removed || 0) + ' 行';
+    if (result.warnings && result.warnings.length > 0) {
+      html += '<br><span style="color:#fa8c16;">警告: ' + result.warnings.join('; ') + '</span>';
+    }
+    html += '</div>';
+
+    flowImportResult.className = 'flow-import-result show success';
+    flowImportResult.innerHTML = html;
+    showToast('导入成功', 'success');
+
+    // 刷新数据表列表
+    await loadTables();
+    await refreshFlowFiles();
+    flowConvertBtn.disabled = false;
+    setStatus('导入完成');
+  } catch (e) {
+    showToast('转换失败: ' + e.message, 'error');
+    flowConvertBtn.disabled = false;
+    flowImportResult.className = 'flow-import-result show error';
+    flowImportResult.innerHTML = '<div class="result-title" style="color:#ff4d4f;">转换失败</div><div class="result-detail">' + h(e.message) + '</div>';
+  }
+});
+
+// Init
+refreshFlowFiles();
+loadTables();
+
+// ── 算法配置面板 ──
+const CONFIG_API = '/api/config';
+const configOverlay = document.getElementById('configOverlay');
+const configPanel = document.getElementById('configPanel');
+const configPanelBody = document.getElementById('configPanelBody');
+const configStatus = document.getElementById('configStatus');
+let configData = {};
+let configDefaults = {};
+let configMeta = [];
+
+function openConfigPanel() {
+  configOverlay.classList.add('show');
+  configPanel.classList.add('show');
+  loadConfig();
+}
+function closeConfigPanel() {
+  configOverlay.classList.remove('show');
+  configPanel.classList.remove('show');
+}
+document.getElementById('configBtn').addEventListener('click', openConfigPanel);
+document.getElementById('configCloseBtn').addEventListener('click', closeConfigPanel);
+configOverlay.addEventListener('click', closeConfigPanel);
+
+// 退出程序：关闭本地服务并结束进程（关闭浏览器标签页不会结束后台进程）
+document.getElementById('shutdownBtn').addEventListener('click', async () => {
+  if (!confirm('确定要退出排程调度系统吗？\n退出后需重新运行程序才能使用。')) return;
+  try {
+    await fetch('/api/shutdown', { method: 'POST' });
+    showToast('程序正在退出…', 'success');
+    setTimeout(() => { window.close(); }, 800);
+  } catch (e) {
+    showToast('退出失败：' + e, 'error');
+  }
+});
+
+async function loadConfig() {
+  try {
+    const r = await fetch(CONFIG_API);
+    const d = await r.json();
+    configData = d.config;
+    configDefaults = d.defaults;
+    configMeta = d.meta;
+    renderConfigPanel();
+  } catch (e) {
+    configPanelBody.innerHTML = '<div style="text-align:center;padding:40px;color:#ff4d4f;">加载失败</div>';
+  }
+}
+
+function renderConfigPanel() {
+  const groups = {};
+  for (const m of configMeta) {
+    if (!groups[m.group]) groups[m.group] = [];
+    groups[m.group].push(m);
+  }
+  let html = '';
+  for (const [gname, params] of Object.entries(groups)) {
+    html += '<div class="config-group open" data-group="' + gname + '">';
+    html += '<div class="config-group-header" onclick="this.parentElement.classList.toggle(\'open\')">';
+    html += '<span class="arrow">&#9654;</span>' + gname + '</div>';
+    html += '<div class="config-group-body">';
+    for (const p of params) {
+      const val = configData[p.key] !== undefined ? configData[p.key] : p.default;
+      html += '<div class="config-param">';
+      html += '<div class="param-name">' + p.label + '</div>';
+      html += '<div class="param-desc">' + p.desc + '</div>';
+      html += '<label>';
+      if (p.type === 'bool') {
+        html += '<label class="config-toggle"><input type="checkbox" data-key="' + p.key + '" ' + (val ? 'checked' : '') + ' onchange="onConfigToggle(this)"><span class="slider"></span></label>';
+      } else {
+        html += '<input type="range" data-key="' + p.key + '" min="' + p.min + '" max="' + p.max + '" step="' + p.step + '" value="' + val + '" oninput="onConfigRange(this)">';
+        html += '<input type="number" data-key="' + p.key + '" min="' + p.min + '" max="' + p.max + '" step="' + p.step + '" value="' + val + '" onchange="onConfigNumber(this)">';
+      }
+      html += '</label>';
+      if (p.up || p.down) {
+        html += '<div class="param-hints">';
+        if (p.up) html += '<div class="hint-up">&#9650; ' + p.up + '</div>';
+        if (p.down) html += '<div class="hint-down">&#9660; ' + p.down + '</div>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+    html += '</div></div>';
+  }
+  configPanelBody.innerHTML = html;
+}
+
+function onConfigToggle(el) {
+  configData[el.dataset.key] = el.checked;
+}
+function onConfigRange(el) {
+  const val = parseFloat(el.value);
+  const step = parseFloat(el.step);
+  configData[el.dataset.key] = step < 1 ? val : Math.round(val);
+  // 同步数字输入框
+  const numInput = el.parentElement.querySelector('input[type="number"]');
+  if (numInput) numInput.value = configData[el.dataset.key];
+}
+function onConfigNumber(el) {
+  const val = parseFloat(el.value);
+  if (isNaN(val)) return;
+  const step = parseFloat(el.step);
+  configData[el.dataset.key] = step < 1 ? val : Math.round(val);
+  const rangeInput = el.parentElement.querySelector('input[type="range"]');
+  if (rangeInput) rangeInput.value = configData[el.dataset.key];
+}
+
+document.getElementById('configSaveBtn').addEventListener('click', async () => {
+  try {
+    const r = await fetch(CONFIG_API, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(configData) });
+    const d = await r.json();
+    configStatus.textContent = d.success ? '已保存' : '保存失败: ' + (d.error || '');
+    configStatus.className = 'config-status show' + (d.success ? '' : ' error');
+    setTimeout(() => configStatus.classList.remove('show'), 2500);
+  } catch (e) {
+    configStatus.textContent = '保存失败';
+    configStatus.className = 'config-status show error';
+    setTimeout(() => configStatus.classList.remove('show'), 2500);
+  }
+});
+
+document.getElementById('configResetBtn').addEventListener('click', () => {
+  configData = JSON.parse(JSON.stringify(configDefaults));
+  renderConfigPanel();
+  configStatus.textContent = '已恢复默认值（需点击保存）';
+  configStatus.className = 'config-status show';
+  setTimeout(() => configStatus.classList.remove('show'), 2500);
+});
+
+// 浏览器关闭自动退出：用 Web Worker 定期发送心跳（后台标签页定时器不被浏览器节流）。
+// 关闭所有标签页/整个浏览器后心跳停止，后端看门狗会自动退出程序，避免后台残留进程。
+(function () {
+  try {
+    var origin = location.origin;
+    var src = 'setInterval(function(){try{fetch("' + origin + '/api/heartbeat",{method:"POST"})}catch(e){}},3000);';
+    new Worker(URL.createObjectURL(new Blob([src], { type: 'application/javascript' })));
+  } catch (e) { /* 不支持时忽略，仍可用右上角“退出程序”按钮 */ }
+})();
+</script>
+</body>
+</html>
