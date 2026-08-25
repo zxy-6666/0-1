@@ -131,31 +131,33 @@ def load_snapshot(snap_id: str):
         d = json.load(f)
     lot_entries = [
         ScheduleEntry(
-            lot_name=e["lot_name"], priority=e["priority"],
-            product_name=e["product_name"], step_number=e["step_number"],
-            step_name=e["step_name"], eqp_id=e["eqp_id"],
+            lot_name=e.get("lot_name", ""), priority=e.get("priority", "9-9"),
+            product_name=e.get("product_name", ""), step_number=e.get("step_number", ""),
+            step_name=e.get("step_name", ""), eqp_id=e.get("eqp_id", "-"),
             start_time=datetime.fromisoformat(e["start_time"]),
             end_time=datetime.fromisoformat(e["end_time"]),
-            ct=e["ct"], qtime_risk=e["qtime_risk"], stage_name=e.get("stage_name", ""),
+            ct=e.get("ct", 0.0), qtime_risk=e.get("qtime_risk", ""),
+            stage_name=e.get("stage_name", ""),
         )
         for e in d.get("lot_entries", [])
     ]
     eqp_entries = [
         EqpScheduleEntry(
-            eqp_id=e["eqp_id"],
+            eqp_id=e.get("eqp_id", "-"),
             start_time=datetime.fromisoformat(e["start_time"]),
             end_time=datetime.fromisoformat(e["end_time"]),
-            lot_name=e["lot_name"], step_name=e["step_name"], qty=e.get("qty", 0),
+            lot_name=e.get("lot_name", ""), step_name=e.get("step_name", ""),
+            qty=e.get("qty", 0),
         )
         for e in d.get("eqp_entries", [])
     ]
     qtime_alerts = [
         QTimeAlert(
-            lot_name=a["lot_name"], qtime_rule=a["qtime_rule"],
+            lot_name=a.get("lot_name", ""), qtime_rule=a.get("qtime_rule", ""),
             start_time=datetime.fromisoformat(a["start_time"]),
             deadline=datetime.fromisoformat(a["deadline"]),
             actual_end=datetime.fromisoformat(a["actual_end"]),
-            over_minutes=a["over_minutes"], status=a["status"],
+            over_minutes=a.get("over_minutes", 0), status=a.get("status", "OK"),
         )
         for a in d.get("qtime_alerts", [])
     ]

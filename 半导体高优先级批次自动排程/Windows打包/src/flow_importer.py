@@ -466,15 +466,29 @@ def _safe_float(row, col: Optional[str]) -> Optional[float]:
 
 
 def _read_system_csv(filepath: str) -> pd.DataFrame:
-    """读取系统 CSV 文件（tab 分隔），不存在返回空 DataFrame"""
+    """读取系统 CSV 文件（tab 分隔，兼容常见编码/分隔符）。
+
+    文件不存在或为空 → 空 DataFrame；文件有内容但无法解析 → 抛异常。
+    必须抛异常而不是静默返回空表：否则 convert_and_merge 会把现有数据
+    当成空表覆盖写回，导致 flow.csv/step_ct.csv 被清空（历史 bug）。
+    """
     if not os.path.exists(filepath):
         return pd.DataFrame()
-    try:
-        # 先尝试 tab 分隔
-        df = pd.read_csv(filepath, sep="\t", dtype=str)
-        return df
-    except Exception:
+    if os.path.getsize(filepath) == 0:
         return pd.DataFrame()
+    for encoding in ["utf-8", "utf-8-sig", "gbk", "gb2312", "gb18030", "latin-1"]:
+        for sep in ["\t", ",", ";"]:
+            try:
+                df = pd.read_csv(filepath, sep=sep, dtype=str, encoding=encoding)
+                if len(df.columns) >= 2:
+                    return df
+            except (UnicodeDecodeError, UnicodeError):
+                continue
+            except pd.errors.EmptyDataError:
+                return pd.DataFrame()
+            except Exception:
+                continue
+    raise Exception(f"无法读取现有数据文件 {filepath}（已尝试常见编码与分隔符），已中止导入以避免覆盖")
 
 
 def convert_and_merge(
@@ -496,9 +510,24 @@ def convert_and_merge(
     flow_path = os.path.join(data_dir, "flow.csv")
     step_ct_path = os.path.join(data_dir, "step_ct.csv")
 
-    # 读取现有数据
-    existing_flow = _read_system_csv(flow_path)
-    existing_step_ct = _read_system_csv(step_ct_path)
+    # 读取现有数据（读取失败必须中止，不能静默覆盖——见 _read_system_csv 注释）
+    try:
+        existing_flow = _read_system_csv(flow_path)
+        existing_step_ct = _read_system_csv(step_ct_path)
+    except Exception as e:
+        import_result.error_files.append("(现有数据)")
+        import_result.warnings.append(str(e))
+        return import_result
+
+    # 现有文件可读但结构不符（缺 product_name 列）时同样中止，避免覆盖清空
+    if not existing_flow.empty and "product_name" not in existing_flow.columns:
+        import_result.error_files.append("(现有数据)")
+        import_result.warnings.append("现有 flow.csv 缺少 product_name 列，已中止导入以避免覆盖")
+        return import_result
+    if not existing_step_ct.empty and "product_name" not in existing_step_ct.columns:
+        import_result.error_files.append("(现有数据)")
+        import_result.warnings.append("现有 step_ct.csv 缺少 product_name 列，已中止导入以避免覆盖")
+        return import_result
 
     # 收集所有需要导入的产品
     all_product_names = set()

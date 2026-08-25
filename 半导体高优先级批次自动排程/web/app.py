@@ -18,12 +18,28 @@ from snapshot_store import save_snapshot, list_snapshots, load_snapshot, delete_
 app = Flask(__name__, template_folder=TEMPLATES_DIR, static_folder=STATIC_DIR)
 app.json.sort_keys = False  # 保持 JSON key 的原始顺序，不按字母排序
 
-# CORS 支持
+# CORS 支持（仅允许本机页面跨源访问，防止任意网页读取/篡改本地数据）
+from urllib.parse import urlparse
+
+
+def _origin_allowed(origin):
+    """仅允许 127.0.0.1 / localhost 源；无 Origin（curl/脚本等非浏览器客户端）放行"""
+    if not origin:
+        return True
+    try:
+        host = (urlparse(origin).netloc or "").split(":")[0]
+    except Exception:
+        return False
+    return host in ("127.0.0.1", "localhost")
+
+
 @app.after_request
 def add_cors_headers(response):
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    origin = request.headers.get("Origin")
+    if _origin_allowed(origin):
+        response.headers['Access-Control-Allow-Origin'] = origin or '*'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
@@ -35,13 +51,19 @@ def index():
     return render_template('index.html')
 
 
+def _safe_table_name(name):
+    """表名必须是 .csv 结尾的纯文件名，防止路径穿越（历史 bug）"""
+    return bool(name) and name.endswith(".csv") \
+        and os.path.basename(name) == name and "/" not in name and "\\" not in name
+
+
 @app.route('/api/upload', methods=['POST'])
 def upload():
     file = request.files.get('file')
     if not file:
         return jsonify({'error': 'No file provided'}), 400
 
-    filename = file.filename
+    filename = os.path.basename((file.filename or "").replace("\\", "/"))
     if not filename:
         return jsonify({'error': 'No filename'}), 400
 
@@ -87,6 +109,8 @@ def tables():
 
 @app.route('/api/table/<name>', methods=['GET'])
 def get_table(name):
+    if not _safe_table_name(name):
+        return jsonify({'error': 'Invalid table name'}), 400
     csv_path = os.path.join(DATA_DIR, name)
     if not os.path.exists(csv_path):
         return jsonify({'error': 'Table not found'}), 404
@@ -110,6 +134,8 @@ def get_table(name):
 
 @app.route('/api/save/<name>', methods=['POST'])
 def save_table(name):
+    if not _safe_table_name(name):
+        return jsonify({'error': 'Invalid table name'}), 400
     csv_path = os.path.join(DATA_DIR, name)
     data = request.get_json()
     if not data or 'rows' not in data:
@@ -130,6 +156,8 @@ def save_table(name):
 
 @app.route('/api/download/<name>', methods=['GET'])
 def download_table(name):
+    if not _safe_table_name(name):
+        return jsonify({'error': 'Invalid table name'}), 400
     csv_path = os.path.join(DATA_DIR, name)
     if not os.path.exists(csv_path):
         return jsonify({'error': 'Table not found'}), 404
@@ -198,22 +226,21 @@ def _run_schedule(seed: int, req_body: dict, export_excel: bool = True):
         special_eqp_map = load_special_eqp(f"{DATA_DIR}/special_eqp.csv") if os.path.exists(f"{DATA_DIR}/special_eqp.csv") else {}
         lot_constraints = load_lot_constraints(f"{DATA_DIR}/lot_constraints.csv") if os.path.exists(f"{DATA_DIR}/lot_constraints.csv") else []
 
-        # 合并内存中的手动调整（Web 界面动态添加的）
+        # 合并内存中的手动调整（Web 界面动态添加的；缓存优先于文件，
+        # 保证"编辑文件里已存在的规则"在界面上能真正生效）
         if _manual_adjusts_cache:
             from models import ManualAdjust
-            existing_keys = {(ma.lot_name, ma.step_name) for ma in manual_adjusts}
+            manual_map = {(ma.lot_name, ma.step_name): ma for ma in manual_adjusts}
             for ma_dict in _manual_adjusts_cache:
-                key = (ma_dict["lot_name"], ma_dict["step_name"] if ma_dict["step_name"] else None)
-                if key not in existing_keys:
-                    delay_to = datetime.strptime(ma_dict["delay_to"], "%Y/%m/%d %H:%M")
-                    mode = ma_dict.get("mode", "delay")
-                    manual_adjusts.append(ManualAdjust(
-                        lot_name=ma_dict["lot_name"],
-                        step_name=ma_dict["step_name"] if ma_dict["step_name"] else None,
-                        delay_to=delay_to,
-                        mode=mode if mode in ("delay", "pin") else "delay",
-                    ))
-                    existing_keys.add(key)
+                delay_to = datetime.strptime(ma_dict["delay_to"], "%Y/%m/%d %H:%M")
+                mode = ma_dict.get("mode", "delay")
+                manual_map[(ma_dict["lot_name"], ma_dict["step_name"] or None)] = ManualAdjust(
+                    lot_name=ma_dict["lot_name"],
+                    step_name=ma_dict["step_name"] or None,
+                    delay_to=delay_to,
+                    mode=mode if mode in ("delay", "pin") else "delay",
+                )
+            manual_adjusts = list(manual_map.values())
 
         # 从 shift_config 解析班次时间
         shift_times = []
@@ -657,6 +684,9 @@ def snapshots_get(snap_id):
         resp = dict(snap["response"])
         resp["snapshot_id"] = snap_id
         resp["seed"] = snap["seed"]
+        # 修复：查看快照后"下载 Excel"必须导出当前所看方案，
+        # 而不是固定指向只含最优方案的 /api/report-excel
+        resp["excel_url"] = f"/api/snapshots/export/{snap_id}"
         return jsonify(resp)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -766,24 +796,45 @@ _manual_adjusts_cache: list[dict] = []
 _last_schedule_result: dict = {}
 
 
+def _load_manual_adjust_dicts() -> list[dict]:
+    """从文件加载手动调整规则（dict 列表），文件不存在/读失败返回空列表"""
+    from data_loader import load_manual_adjusts
+    filepath = os.path.join(DATA_DIR, "manual_adjust.csv")
+    if not os.path.exists(filepath):
+        return []
+    try:
+        adjusts = load_manual_adjusts(filepath)
+    except Exception:
+        return []
+    return [
+        {
+            "lot_name": ma.lot_name,
+            "step_name": ma.step_name or "",
+            "delay_to": ma.delay_to.strftime("%Y/%m/%d %H:%M") if ma.delay_to else "",
+            "mode": ma.mode,
+        }
+        for ma in adjusts
+    ]
+
+
+def _merge_manual_adjusts() -> list[dict]:
+    """合并 文件规则 ∪ 内存缓存（缓存优先），保证界面/保存/排程三方数据一致。
+
+    修复历史 bug：文件与内存双数据源导致"编辑已存在规则被静默忽略、
+    保存时文件规则被覆盖丢失"。
+    """
+    merged = _load_manual_adjust_dicts()
+    keyed = {(m["lot_name"], m["step_name"] or None): m for m in merged}
+    for ma in _manual_adjusts_cache:
+        keyed[(ma["lot_name"], ma["step_name"] or None)] = ma
+    return list(keyed.values())
+
+
 @app.route('/api/manual-adjusts', methods=['GET'])
 def get_manual_adjusts():
-    """获取所有手动调整（优先从文件加载，前端可用内存缓存）"""
+    """获取所有手动调整（文件 ∪ 内存缓存合并结果，缓存优先）"""
     try:
-        from data_loader import load_manual_adjusts
-        filepath = os.path.join(DATA_DIR, "manual_adjust.csv")
-        if os.path.exists(filepath):
-            adjusts = load_manual_adjusts(filepath)
-            return jsonify([
-                {
-                    "lot_name": ma.lot_name,
-                    "step_name": ma.step_name or "",
-                    "delay_to": ma.delay_to.strftime("%Y/%m/%d %H:%M") if ma.delay_to else "",
-                    "mode": ma.mode,
-                }
-                for ma in adjusts
-            ])
-        return jsonify(_manual_adjusts_cache)
+        return jsonify(_merge_manual_adjusts())
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -827,7 +878,7 @@ def add_manual_adjust():
             "mode": mode,
         })
 
-    return jsonify({"success": True, "manual_adjusts": _manual_adjusts_cache})
+    return jsonify({"success": True, "manual_adjusts": _merge_manual_adjusts()})
 
 
 @app.route('/api/manual-adjust', methods=['DELETE'])
@@ -876,29 +927,30 @@ def delete_manual_adjust():
     return jsonify({
         "success": True,
         "removed": removed,
-        "manual_adjusts": _manual_adjusts_cache,
+        "manual_adjusts": _merge_manual_adjusts(),
     })
 
 
 @app.route('/api/manual-adjust/save', methods=['POST'])
 def save_manual_adjusts():
-    """将内存中的手动调整保存到文件"""
+    """将（文件 ∪ 内存）合并后的手动调整保存到文件，随后清空内存缓存"""
     global _manual_adjusts_cache
     try:
         filepath = os.path.join(DATA_DIR, "manual_adjust.csv")
-        if _manual_adjusts_cache:
-            df = pd.DataFrame(_manual_adjusts_cache)
-            # 确保列名正确
+        merged = _merge_manual_adjusts()
+        if merged:
+            df = pd.DataFrame(merged)
             if "mode" in df.columns:
                 df = df[["lot_name", "step_name", "delay_to", "mode"]]
             else:
                 df = df[["lot_name", "step_name", "delay_to"]]
             df.to_csv(filepath, index=False, sep="\t")
         else:
-            # 空时写入空文件或删除
+            # 空时删除文件（无规则）
             if os.path.exists(filepath):
                 os.remove(filepath)
-        return jsonify({"success": True, "count": len(_manual_adjusts_cache)})
+        _manual_adjusts_cache = []
+        return jsonify({"success": True, "count": len(merged), "manual_adjusts": merged})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1295,8 +1347,9 @@ def flow_import_upload():
     for file in uploaded_files:
         if not file.filename:
             continue
-        filename = file.filename
-        if not filename.lower().endswith(('.csv', '.xlsx', '.xls')):
+        # 净化文件名，防止路径穿越
+        filename = os.path.basename(file.filename.replace("\\", "/"))
+        if not filename or not filename.lower().endswith(('.csv', '.xlsx', '.xls')):
             skipped.append(f"{filename} (不支持的文件类型)")
             continue
         filepath = os.path.join(FLOW_IMPORT_DIR, filename)
@@ -1355,7 +1408,7 @@ def flow_import_clear():
 def flow_import_delete():
     """删除导入目录中的单个文件"""
     data = request.get_json() or {}
-    filename = data.get("filename", "")
+    filename = os.path.basename((data.get("filename", "") or "").replace("\\", "/"))
     if not filename:
         return jsonify({"error": "filename is required"}), 400
     filepath = os.path.join(FLOW_IMPORT_DIR, filename)

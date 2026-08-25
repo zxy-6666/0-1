@@ -362,22 +362,34 @@ def auto_repair_step_ct(flows: list[FlowStep], step_cts: list[StepCT],
             ))
 
     if step_ct_filepath:
-        # 回写到 step_ct.csv，保证下次读取直接有
-        # 容错：文件被占用（Excel 锁）/无写权限时只告警，内存补全仍然生效
-        rows = []
+        # 回写到 step_ct.csv，保证下次读取直接有。
+        # 容错：文件被占用（Excel 锁）/无写权限时只告警，内存补全仍然生效。
+        # 只**追加**缺失步骤的补全行，保留原有行的原始精度与列（避免整表重写导致
+        # 已有 CT 被四舍五入、用户自定义列丢失——历史 bug）。
+        new_rows = []
         for c in new_cts:
-            rows.append({
+            if (c.product_name, c.step_number) in existing_keys:
+                continue  # 原有行不动
+            new_rows.append({
                 "product_name": c.product_name,
                 "step_number": c.step_number,
                 "step_name": c.step_name,
                 "qty": str(c.qty),
                 "step_ct": f"{c.step_ct:.2f}",
             })
-        import pandas as pd
+        if not new_rows:
+            return new_cts
         try:
-            df = pd.DataFrame(rows, columns=["product_name", "step_number", "step_name", "qty", "step_ct"])
+            records = []
+            if os.path.exists(step_ct_filepath) and os.path.getsize(step_ct_filepath) > 0:
+                _existing_df = _read_csv(step_ct_filepath)
+                if not _existing_df.empty:
+                    records = _existing_df.fillna("").to_dict(orient="records")
+            records.extend(new_rows)
+            cols = list(records[0].keys())
+            df = pd.DataFrame(records, columns=cols)
             df.to_csv(step_ct_filepath, index=False, sep="\t")
-            print(f"    ✅ 已自动回写到 step_ct.csv ({len(rows)} 行)，下次无需手动再保存")
+            print(f"    ✅ 已自动回写 step_ct.csv（新增 {len(new_rows)} 行，原有行保持不变），下次无需手动再保存")
         except (PermissionError, OSError) as e:
             print(f"    ⚠ 回写 {step_ct_filepath} 失败（{e}），本次仅内存补全")
 
@@ -432,9 +444,17 @@ def get_product_flow_map(flows: list[FlowStep]) -> dict[str, list[FlowStep]]:
         if f.product_name not in flow_map:
             flow_map[f.product_name] = []
         flow_map[f.product_name].append(f)
+
+    def _step_sort_key(s: FlowStep):
+        # 防御：step_number 为空 / 非数字（如缺单元格读成 "nan"）时避免 int() 崩溃
+        try:
+            return tuple(int(n) for n in s.step_number.split("."))
+        except (ValueError, TypeError, AttributeError):
+            return (0, 0)
+
     # 按 step_number 排序
     for product in flow_map:
-        flow_map[product].sort(key=lambda x: tuple(int(n) for n in x.step_number.split(".")))
+        flow_map[product].sort(key=_step_sort_key)
     return flow_map
 
 
@@ -472,9 +492,16 @@ def load_special_lot_step(filepath: str) -> dict[tuple[str, str], SpecialLotStep
     for _, row in df.iterrows():
         lot_name = str(row["lot_name"]).strip()
         step_name = str(row["step_name"]).strip()
-        # special_ct: 空或0表示缺省
+        # special_ct: 空或 0 表示缺省（用数值判断，兼容 "0.00"、"0.000" 等写法）
         ct_str = _safe_str(row, "special_ct")
-        special_ct = float(ct_str) if ct_str and ct_str not in ("0", "0.0") else None
+        special_ct = None
+        if ct_str:
+            try:
+                _v = float(ct_str)
+                if _v > 0:
+                    special_ct = _v
+            except ValueError:
+                pass
         # special_eqp: 逗号分隔的设备列表
         eqp_str = _safe_str(row, "special_eqp")
         special_eqp = [e.strip() for e in eqp_str.split(",") if e.strip()] if eqp_str else []

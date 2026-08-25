@@ -20,6 +20,7 @@
 """
 from __future__ import annotations
 
+import copy
 import random
 from datetime import datetime
 
@@ -27,14 +28,35 @@ from scheduler import schedule
 from validation import validate_schedule, compute_objective
 
 
-def _weighted_shuffle(names: list[str], rng: random.Random, n_shuffles: int = 2) -> list[str]:
-    """对批次顺序做少量加权随机交换：高优先级批次靠前概率大，低优先级可后移。"""
+def _weighted_shuffle(names: list[str], rng: random.Random,
+                      priority_rank: dict = None, n_shuffles: int = 2) -> list[str]:
+    """对批次顺序做少量加权随机交换：高优先级（rank 小）批次被选中参与交换的
+    概率更低、更可能保持在靠前位置，低优先级批次可后移/试探，提供搜索多样性。
+
+    priority_rank: {lot_name: rank}，rank 0 = 最高优先级；缺省时按原顺序编号。
+    """
     order = list(names)
-    # 稳定冒泡式随机：按优先级保持相对靠前，但允许低优先级批次向前试探
+    n = len(order)
+    if n < 2:
+        return order
+    if priority_rank is None:
+        priority_rank = {nm: i for i, nm in enumerate(order)}
     for _ in range(n_shuffles):
-        i = rng.randrange(len(order))
-        j = rng.randrange(len(order))
-        # 轻微概率交换任意两位置，探索不同顺序
+        # 权重 w = 1 / (rank + 1)：rank 越大（优先级越低）越容易被抽中交换
+        weights = [1.0 / (priority_rank.get(nm, n) + 1) for nm in order]
+        total = sum(weights)
+
+        def _pick():
+            r = rng.random() * total
+            acc = 0.0
+            for k in range(n):
+                acc += weights[k]
+                if r <= acc:
+                    return k
+            return n - 1
+
+        i = _pick()
+        j = _pick()
         order[i], order[j] = order[j], order[i]
     return order
 
@@ -105,11 +127,9 @@ def schedule_optimized(
     """
     rng = random.Random(seed)
     base_names = [l.lot_name for l in lots]
-    # 默认顺序（按优先级）作为初始尝试
-    sorted_names = sorted(base_names, key=lambda n: next(
-        l.priority for l in lots if l.lot_name == n))
-    # 优先级排序稳定：按 (priority, name)
+    # 优先级排序稳定：按 (priority, name) 排序作为默认尝试顺序与权重基准
     sorted_names = [l.lot_name for l in sorted(lots, key=lambda l: (l.priority, l.lot_name))]
+    priority_rank = {name: i for i, name in enumerate(sorted_names)}
 
     best = None
     best_score = None
@@ -118,6 +138,7 @@ def schedule_optimized(
     valid_iterations = 0
     best_violating = None
     best_violating_count = None
+    best_violating_meta = {"iter": None, "errors": []}
 
     # schedule_start 由 schedule() 内部计算，这里用 min start_time 近似打分基准
     schedule_start = min((l.start_time for l in lots if l.start_time is not None),
@@ -131,14 +152,18 @@ def schedule_optimized(
         if it == 0:
             lot_order = list(sorted_names)
         else:
-            lot_order = _weighted_shuffle(base_names, rng)
+            lot_order = _weighted_shuffle(base_names, rng, priority_rank=priority_rank)
 
         eqp_prefs = _sample_eqp_preferences(lots, flows, rng)
         chain_placement = rng.choice(["compact", "early"]) if it > 0 else "compact"
 
+        # 每轮用 lots 的浅拷贝：scheduler 内 FTF 数量变化会写回 lot.qty，
+        # 直接复用同一列表会导致跨轮污染、结果不可复现（历史 bug）。
+        iter_lots = [copy.copy(l) for l in lots]
+
         try:
             le, ee, qa = schedule(
-                lots=lots, flows=flows, ct_lookup=ct_lookup, qtimes=qtimes,
+                lots=iter_lots, flows=flows, ct_lookup=ct_lookup, qtimes=qtimes,
                 shift_times=shift_times,
                 ftf_qty_change=ftf_qty_change,
                 special_lot_step_lookup=special_lot_step_lookup,
@@ -162,13 +187,13 @@ def schedule_optimized(
             continue
 
         errors = validate_schedule(
-            le, ee, qa, lots, flows, qtimes,
+            le, ee, qa, iter_lots, flows, qtimes,
             lot_constraints=lot_constraints, shift_times=shift_times,
             special_eqp_map=special_eqp_map)
 
         if not errors:
             valid_iterations += 1
-            obj = compute_objective(le, lots, schedule_start, weight_by_priority,
+            obj = compute_objective(le, iter_lots, schedule_start, weight_by_priority,
                                     qtimes=qtimes)
             score = obj["score"]
             margin = obj.get("min_qtime_margin")  # None 表示无 Q-time
@@ -224,8 +249,9 @@ def schedule_optimized(
         def _eval_solution(lo, ep, ch):
             """构造并全量校验，返回 (errors, obj, le, ee, qa)；异常或非法返回 None-ish。"""
             try:
+                eval_lots = [copy.copy(l) for l in lots]  # 避免 FTF qty 写回污染
                 rle, ree, rqa = schedule(
-                    lots=lots, flows=flows, ct_lookup=ct_lookup, qtimes=qtimes,
+                    lots=eval_lots, flows=flows, ct_lookup=ct_lookup, qtimes=qtimes,
                     shift_times=shift_times, ftf_qty_change=ftf_qty_change,
                     special_lot_step_lookup=special_lot_step_lookup,
                     priority_wait_map=priority_wait_map,
@@ -241,12 +267,12 @@ def schedule_optimized(
             except Exception:
                 return None
             errs = validate_schedule(
-                rle, ree, rqa, lots, flows, qtimes,
+                rle, ree, rqa, eval_lots, flows, qtimes,
                 lot_constraints=lot_constraints, shift_times=shift_times,
                 special_eqp_map=special_eqp_map)
             if errs:
                 return (errs, None, rle, ree, rqa)
-            obj = compute_objective(rle, lots, schedule_start, weight_by_priority,
+            obj = compute_objective(rle, eval_lots, schedule_start, weight_by_priority,
                                     qtimes=qtimes)
             return (errs, obj, rle, ree, rqa)
 
@@ -286,9 +312,7 @@ def schedule_optimized(
 
         for _it in range(refine_max_iterations):
             _t_iters += 1
-            # 选算子
-            ops = sorted(op_names, key=lambda n: -op_weights[n])
-            op = ops[0]
+            # 选算子（轮盘赌）
             r_roll = rng.random() * sum(op_weights.values())
             _acc = 0.0
             for n in op_names:
@@ -375,9 +399,7 @@ def schedule_optimized(
                 cur_lo = nb_lo
                 cur_ep = nb_ep
                 cur_ch = nb_ch
-                if move_id in tabu:
-                    tabu[move_id] = _t_iters + tabu_tenure
-                elif move_id is not None:
+                if move_id is not None:
                     tabu[move_id] = _t_iters + tabu_tenure
                 if improve:
                     best_ref_obj_score = nb_score

@@ -153,7 +153,15 @@ def validate_schedule(
             start_idx = get_step_index_in_flow(product_flow, lot.current_step_name)
         except ValueError:
             continue
-        expected = [s.step_name for s in product_flow[start_idx:]]
+        # 有 target_step 时只要求排到该步为止（与调度器 remaining 截断一致），
+        # 否则会把 target 之后的步骤误报为"缺失步骤"（历史 bug）。
+        end_idx = len(product_flow)
+        if lot.target_step:
+            try:
+                end_idx = get_step_index_in_flow(product_flow, lot.target_step) + 1
+            except ValueError:
+                pass
+        expected = [s.step_name for s in product_flow[start_idx:end_idx]]
         actual = [e.step_name for e in lot_steps.get(lot.lot_name, [])]
         missing = set(expected) - set(actual)
         if missing:

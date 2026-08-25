@@ -184,9 +184,23 @@ def _chain_gap_budget(
                 chain_feasible = False
                 break
         else:
-            # 相邻步骤（track out → track in），只有 1 个间隙
-            if D - chain_cts[qs] - chain_cts[qe] > 0:
-                per_gap_list.append(D - chain_cts[qs] - chain_cts[qe])
+            # 相邻步骤（qe = qs + 1），只有 1 个间隙；时钟区间取决于起/止 mod：
+            #   track out → track in：时钟只覆盖步间等待 → max_gap = D
+            #   track in → track out：覆盖两端 CT + 等待 → D - ct_s - ct_e
+            #   track in → track in：覆盖起点 CT + 等待 → D - ct_s
+            #   track out → track out：覆盖终点 CT + 等待 → D - ct_e
+            ct_s = chain_cts[qs]
+            ct_e = chain_cts[qe]
+            if sm == "track out" and em == "track in":
+                max_gap = D
+            elif sm == "track in" and em == "track out":
+                max_gap = D - ct_s - ct_e
+            elif sm == "track in":
+                max_gap = D - ct_s
+            else:
+                max_gap = D - ct_e
+            if max_gap > 0:
+                per_gap_list.append(max_gap)
             else:
                 chain_feasible = False
 
@@ -1739,6 +1753,7 @@ def _try_schedule_chain_forward(
     product_qtimes: list = None,
     chain_placement: str = "compact",
     ref_release_forecast: dict = None,
+    cur_time: Optional[datetime] = None,
 ) -> tuple[bool, int]:
     """尝试从前往后调度一个 Q-time 链段。
     如果遇到 reference 阻塞或设备不可用，则拆链：
@@ -1938,7 +1953,8 @@ def _try_schedule_chain_forward(
                         can_use, adj_time = _compute_batch_slot(
                             eqp_id, lot, step, ct, ready_time, special_eqp_map[eqp_id],
                             lot_state, special_lot_step_lookup, ct_lookup,
-                            eqp_batch_state, priority_wait_map)
+                            eqp_batch_state, priority_wait_map,
+                            cur_time=cur_time)
                         if not can_use:
                             continue
                         check_time = adj_time
@@ -2239,7 +2255,8 @@ def _try_schedule_chain_forward(
                     can_use, adj_time = _compute_batch_slot(
                         eqp_id, lot, step, ct, ready_time, special_eqp_map[eqp_id],
                         lot_state, special_lot_step_lookup, ct_lookup,
-                        eqp_batch_state, priority_wait_map)
+                        eqp_batch_state, priority_wait_map,
+                        cur_time=cur_time)
                     if not can_use:
                         continue
                     avail = adj_time
@@ -2873,6 +2890,7 @@ def _try_schedule_chain_reverse(
     lot_state: dict,
     ref_release_times: dict,
     priority_wait_map: dict,
+    chain_info: Optional[dict] = None,
 ) -> bool:
     """从后往前反向调度链后缀步骤。
     从 Q-time deadline 往前倒排，确保后缀步骤紧贴 deadline 之前。
@@ -3038,12 +3056,12 @@ def schedule(
         special_lot_step_lookup = {}
 
     global TIGHT_CHAIN_THRESHOLD, QTIGHT_SAFETY_MARGIN, CHAIN_WAIT_SAFETY
-    if tight_chain_threshold is not None:
-        TIGHT_CHAIN_THRESHOLD = tight_chain_threshold
-    if qtight_safety_margin is not None:
-        QTIGHT_SAFETY_MARGIN = qtight_safety_margin
-    if chain_wait_safety is not None:
-        CHAIN_WAIT_SAFETY = chain_wait_safety
+    # 每次调用都写入"生效值"（参数为 None 时恢复模块默认），
+    # 避免上一次调用残留的自定义值污染后续以默认参数运行的调用
+    # （同进程多请求 / 测试先后调用场景）。
+    TIGHT_CHAIN_THRESHOLD = tight_chain_threshold if tight_chain_threshold is not None else 240
+    QTIGHT_SAFETY_MARGIN = qtight_safety_margin if qtight_safety_margin is not None else 90
+    CHAIN_WAIT_SAFETY = chain_wait_safety if chain_wait_safety is not None else 20
 
     now = datetime.now()
 
@@ -3463,7 +3481,8 @@ def schedule(
                 manual_adjust_lookup, pin_lookup, resolve_max_iterations,
                 lot_entries, eqp_entries, qtime_alerts,
                 pending_refs, state.get("ref_block_info", {}), shift_times,
-                reference_deps, lot_state, ref_release_times, priority_wait_map)
+                reference_deps, lot_state, ref_release_times, priority_wait_map,
+                chain_info)
             current_time = max(current_time, lot_entries[-1].end_time if lot_entries else current_time)
             continue
 
@@ -3483,6 +3502,7 @@ def schedule(
                 product_qtimes,  # 传入 product_qtimes 用于 deadline 计算
                 chain_placement,  # 链放置策略
                 state.get("ref_release_forecast"),  # 第一遍预测锚点
+                current_time,  # 真实推进时间（恒组批 busy_until 判定用）
             )
             if chain_scheduled or state.get("chain_reverse_pending"):
                 current_time = max(current_time, lot_entries[-1].end_time if lot_entries else current_time)

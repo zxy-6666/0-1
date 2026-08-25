@@ -842,7 +842,8 @@ function renderReport(data) {
   document.getElementById('statLotEntries').textContent = data.stats.lot_entries;
   document.getElementById('statEqpEntries').textContent = data.stats.eqp_entries;
   document.getElementById('statQtimeAlerts').textContent = data.stats.qtime_alerts;
-  document.getElementById('statLots').textContent = (data.lot_summaries || []).length;
+  const _ls = data.lot_summaries || {};
+  document.getElementById('statLots').textContent = Array.isArray(_ls) ? _ls.length : ((_ls.rows || []).length);
   // 交期 KPI（有 planned_end 时显示）
   const tardyCard = document.getElementById('statTardyCard');
   const marginCard = document.getElementById('statMarginCard');
