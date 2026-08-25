@@ -1,0 +1,85 @@
+{
+  "week_start": "2026-08-24 08:00",
+  "schedule": [
+    {
+      "id": "WO-104",
+      "fam": "C",
+      "setup": 0,
+      "cnc_h": 8.0,
+      "start_h": 0.0,
+      "end_h": 8.0,
+      "due_h": 48,
+      "status": "✓ 按期"
+    },
+    {
+      "id": "WO-102",
+      "fam": "B",
+      "setup": 30,
+      "cnc_h": 5.33,
+      "start_h": 8.5,
+      "end_h": 13.83,
+      "due_h": 72,
+      "status": "✓ 按期"
+    },
+    {
+      "id": "WO-101",
+      "fam": "A",
+      "setup": 25,
+      "cnc_h": 8.33,
+      "start_h": 14.25,
+      "end_h": 22.58,
+      "due_h": 24,
+      "status": "✓ 按期"
+    },
+    {
+      "id": "WO-103",
+      "fam": "A",
+      "setup": 0,
+      "cnc_h": 12.5,
+      "start_h": 22.58,
+      "end_h": 35.08,
+      "due_h": 120,
+      "status": "✓ 按期"
+    },
+    {
+      "id": "WO-105",
+      "fam": "B",
+      "setup": 30,
+      "cnc_h": 8.0,
+      "start_h": 35.58,
+      "end_h": 43.58,
+      "due_h": 144,
+      "status": "✓ 按期"
+    },
+    {
+      "id": "WO-106",
+      "fam": "D",
+      "setup": 50,
+      "cnc_h": 8.33,
+      "start_h": 44.42,
+      "end_h": 52.75,
+      "due_h": 96,
+      "status": "✓ 按期"
+    },
+    {
+      "id": "WO-107",
+      "fam": "C",
+      "setup": 35,
+      "cnc_h": 12.0,
+      "start_h": 53.33,
+      "end_h": 65.33,
+      "due_h": 168,
+      "status": "✓ 按期"
+    },
+    {
+      "id": "WO-108",
+      "fam": "A",
+      "setup": 40,
+      "cnc_h": 16.67,
+      "start_h": 66.0,
+      "end_h": 82.67,
+      "due_h": 192,
+      "status": "✓ 按期"
+    }
+  ]
+}
