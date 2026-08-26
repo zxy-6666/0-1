@@ -1,0 +1,14 @@
+{
+  "name": "revenue-report",
+  "version": "1.0.0",
+  "description": "营收报表 Web 版（数据库直连 + 网页端维护输入 + 自动计算）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/calc.test.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.12.0"
+  }
+}

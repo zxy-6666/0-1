@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>营收报表</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">收</span>
+    <h1>营收报表</h1>
+  </div>
+  <div class="controls">
+    <label>月份
+      <input type="month" id="month" value="2026-08">
+    </label>
+    <label>数据源
+      <select id="source">
+        <option value="demo">演示数据（不连库）</option>
+        <option value="db">数据库</option>
+      </select>
+    </label>
+    <button id="btnRefresh" class="primary">刷新报表</button>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="report">报表</button>
+  <button class="tab" data-tab="input">输入维护</button>
+  <button class="tab" data-tab="db">数据库连接</button>
+</nav>
+
+<main>
+  <!-- ============ 报表页 ============ -->
+  <section id="tab-report" class="tabpanel active">
+    <div class="notice" id="reportNotice"></div>
+    <div class="report-tabs">
+      <button class="rtab active" data-rtab="summary">汇总</button>
+      <button class="rtab" data-rtab="recv">入料</button>
+      <button class="rtab" data-rtab="ship">出货</button>
+    </div>
+    <div id="reportContainer" class="tbl-scroll"></div>
+  </section>
+
+  <!-- ============ 输入维护页 ============ -->
+  <section id="tab-input" class="tabpanel">
+    <div class="editor-bar">
+      <span class="hint">所有输入保存到本地 data/inputs.json，保存后点「刷新报表」生效</span>
+      <button id="btnSaveInputs" class="primary">保存输入</button>
+    </div>
+
+    <details class="editor" open>
+      <summary>4. PKG Group 分类（产品 → 组）</summary>
+      <div class="editable" id="edPkgGroup"></div>
+    </details>
+
+    <details class="editor" open>
+      <summary>5. 入料、出货数据筛选条件</summary>
+      <div class="hint">规则：行内非空字段全部匹配（类型=入料/出货），以后新增筛选列直接点“添加列”</div>
+      <div class="editable" id="edFilters"></div>
+    </details>
+
+    <details class="editor" open>
+      <summary>6. PLAN（计划量，行=产品×Plan in/out，列=日期）</summary>
+      <div class="editable-matrix" id="edPlan"></div>
+    </details>
+
+    <details class="editor" open>
+      <summary>8. 单价（行=产品，列=日期；留空=沿用最近有效单价）</summary>
+      <div class="editable-matrix" id="edPrice"></div>
+    </details>
+
+    <details class="editor" open>
+      <summary>10. 异常（delay 搬移 / scrapped 扣减，只影响计算不改 PLAN 表）</summary>
+      <div class="editable" id="edExceptions"></div>
+    </details>
+  </section>
+
+  <!-- ============ 数据库页 ============ -->
+  <section id="tab-db" class="tabpanel">
+    <div class="card">
+      <h3>连接参数</h3>
+      <form id="dbForm" class="grid-form">
+        <label>主机 <input name="host"></label>
+        <label>端口 <input name="port"></label>
+        <label>数据库 <input name="database"></label>
+        <label>用户名 <input name="user"></label>
+        <label>密码 <input name="password" type="password"></label>
+        <label>Schema <input name="schema"></label>
+        <label>表名 <input name="table"></label>
+      </form>
+      <div class="row">
+        <button id="btnTestDb">测试连接</button>
+        <button id="btnPreviewRaw">按当前月份拉取预览</button>
+        <button id="btnSaveDb" class="primary">保存连接</button>
+        <span id="dbMsg" class="msg"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>字段映射（9号表字段 → 数据库列名）</h3>
+      <div class="hint">先跑数据库页「拉取预览」确认列名；尤其 activity 若叫 activity_name / event_name 等需改这里</div>
+      <table class="grid-table" id="fieldMapTable">
+        <thead><tr><th>9号表字段</th><th>数据库字段</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <button id="btnSaveFieldMap" class="primary">保存字段映射</button>
+      <div id="rawPreview"></div>
+    </div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
