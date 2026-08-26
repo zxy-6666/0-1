@@ -10,7 +10,8 @@ Attribute VB_Name = "营收报表宏"
 '   1. 把本文件导入：Alt+F11 -> 文件 -> 导入文件
 '   2. 维护数据表：4/5/6/8/9/10（9号表把数据库数据整列粘贴）
 '   3. 运行【刷新报表】生成 1/2/3 表
-'   4. 跨月：运行【新建月份】，输入如 2026-09，自动补日期列并刷新
+'   4. 跨月：运行【新建月份】，输入如 2026-09，先把当前 1/2/3 表复制成带月份副本存档
+'      再补日期列并刷新到新月份（原月数据保留为 1.汇总_2026-08 等）
 '
 ' 约定：
 '   - 汇总表A1 为报表月份（如 2026-08-01），宏据此重建整月报表
@@ -69,6 +70,8 @@ Public Sub 新建月份()
     mStart = DateSerial(Year(m), Month(m), 1)
     mEnd = DateSerial(Year(m), Month(m) + 1, 0)
     mDays = mEnd - mStart + 1
+    ' 先把当前 1/2/3 表复制成带月份副本存档，再刷新到新月份
+    ArchiveCurrentMonth ThisWorkbook
     ' 为输入表(6.PLAN / 8.单价)补缺失的月份日期列
     EnsureInputDateHeaders ThisWorkbook.Sheets(S_PLAN), 1, 2
     EnsureInputDateHeaders ThisWorkbook.Sheets(S_PRICE), 2, 2
@@ -120,6 +123,7 @@ Private Sub RefreshCore(Optional ByVal forceMonth As Date = 0)
     LoadPlan wb, msgs
     ApplyExceptions wb, msgs
     LoadFiltersAndRaw wb, msgs
+    CheckMissingPrice wb, msgs
     ComputeAndWriteSheets wb, msgs
 
     wsSum.Range("A1").Value = mStart
@@ -253,18 +257,31 @@ Private Sub LoadPrice(wb As Workbook, msgs As Collection)
 nextProd:
     Next r
 
-    ' 检查缺单价的产品
+End Sub
+
+'=============================================================
+' 缺价检查：本月有入料/出货量、但整月都没单价，才提示
+'=============================================================
+Private Sub CheckMissingPrice(wb As Workbook, msgs As Collection)
     Dim pi As Long, di As Long
-    Dim anyPr As Boolean
+    Dim hasQty As Boolean, hasPrice As Boolean
+    Dim pn As String, k As String, dd As Long
     For pi = 0 To UBound(products)
-        anyPr = False
+        pn = products(pi)
+        hasQty = False
+        hasPrice = False
         For di = 0 To mDays - 1
-            If dictPrice.Exists(products(pi) & Chr(1) & CStr(Int(mStart) + di)) Then
-                anyPr = True
-                Exit For
-            End If
+            dd = Int(mStart) + di
+            k = pn & Chr(1) & CStr(dd)
+            If dictPrice.Exists(k) Then hasPrice = True
+            If dictRecvQty Is Nothing Or dictShipQty Is Nothing Then Exit For
+            If dictRecvQty.Exists(k) Then If CDbl(dictRecvQty(k)) > 0 Then hasQty = True
+            If dictShipQty.Exists(k) Then If CDbl(dictShipQty(k)) > 0 Then hasQty = True
+            If hasQty And hasPrice Then Exit For
         Next di
-        If Not anyPr Then msgs.Add "8.单价 缺少产品 " & products(pi) & " 整月单价"
+        If hasQty And Not hasPrice Then
+            msgs.Add "提示: 产品 " & pn & " 本月有入料/出货量，但 8.单价 整月未填写，金额按0计算。"
+        End If
     Next pi
 End Sub
 
@@ -614,7 +631,8 @@ Private Sub ComputeAndWriteSheets(wb As Workbook, msgs As Collection)
     Dim planInA() As Double, amtInA() As Double, cumInA() As Double, pctInA() As Double
     Dim planOutA() As Double, amtOutA() As Double, cumOutA() As Double, pctOutA() As Double
     Dim planInM() As Double, amtInM() As Double, planOutM() As Double, amtOutM() As Double
-    Dim prodQtyA() As Double, shipQtyA() As Double, shipQtyG() As Double
+    Dim prodQtyA() As Double, shipQtyA() As Double
+    Dim recvQtyG() As Double, shipQtyG() As Double
 
     ReDim planInA(0 To nG - 1, 0 To mDays - 1)
     ReDim amtInA(0 To nG - 1, 0 To mDays - 1)
@@ -630,6 +648,7 @@ Private Sub ComputeAndWriteSheets(wb As Workbook, msgs As Collection)
     ReDim amtOutM(0 To nG - 1)
     ReDim prodQtyA(0 To nP - 1, 0 To mDays - 1)
     ReDim shipQtyA(0 To nP - 1, 0 To mDays - 1)
+    ReDim recvQtyG(0 To nG - 1, 0 To mDays - 1)
     ReDim shipQtyG(0 To nG - 1, 0 To mDays - 1)
 
     ' 入料量/出货量（按产品）
@@ -660,6 +679,7 @@ Private Sub ComputeAndWriteSheets(wb As Workbook, msgs As Collection)
                     planOutA(g, d) = planOutA(g, d) + pout * pr
                     amtInA(g, d) = amtInA(g, d) + prodQtyA(p, d) * pr
                     amtOutA(g, d) = amtOutA(g, d) + shipQtyA(p, d) * pr
+                    recvQtyG(g, d) = recvQtyG(g, d) + prodQtyA(p, d)
                     shipQtyG(g, d) = shipQtyG(g, d) + shipQtyA(p, d)
                 End If
             Next p
@@ -679,7 +699,7 @@ Private Sub ComputeAndWriteSheets(wb As Workbook, msgs As Collection)
         Next d
     Next g
 
-    WriteRecvSheet wb.Sheets(S_RECV), planInA, prodQtyA, amtInA, cumInA, pctInA, planInM, amtInM
+    WriteRecvSheet wb.Sheets(S_RECV), planInA, recvQtyG, amtInA, cumInA, pctInA, planInM, amtInM
     WriteShipSheet wb.Sheets(S_SHIP), planOutA, shipQtyG, amtOutA, cumOutA, pctOutA, planOutM, amtOutM
     WriteSummarySheet wb.Sheets(S_SUMMARY), pctInA, pctOutA, amtInA, planInA, amtOutA, planOutA, amtInM, planInM, amtOutM, planOutM
 End Sub
@@ -687,7 +707,7 @@ End Sub
 '=============================================================
 ' 2.入料
 '=============================================================
-Private Sub WriteRecvSheet(ws As Worksheet, planInA() As Double, prodQtyA() As Double, amtInA() As Double, cumInA() As Double, pctInA() As Double, planInM() As Double, amtInM() As Double)
+Private Sub WriteRecvSheet(ws As Worksheet, planInA() As Double, recvQtyG() As Double, amtInA() As Double, cumInA() As Double, pctInA() As Double, planInM() As Double, amtInM() As Double)
     ws.Cells.Clear
     Dim nG As Long, nP As Long
     nG = UBound(groups) + 1
@@ -716,22 +736,23 @@ Private Sub WriteRecvSheet(ws As Worksheet, planInA() As Double, prodQtyA() As D
     Next g
     r = r + 1
 
-    ' 入料量(按产品)
+    ' 入料量(按组)
     ws.Cells(r, 1).Value = "入料量"
     ws.Cells(r, 1).Font.Bold = True
     ws.Cells(r, 1).Font.Size = 12
     r = r + 1
-    ws.Cells(r, 1).Value = "Product_name\日期"
+    ws.Cells(r, 1).Value = "PKG Group\日期"
     ws.Cells(r, 1).Font.Bold = True
     WriteDateHeader ws, r, startC, 0
-    For p = 0 To nP - 1
+    For g = 0 To nG - 1
         r = r + 1
-        ws.Cells(r, 1).Value = products(p)
+        ws.Cells(r, 1).Value = groups(g)
+        ws.Cells(r, 1).Font.Bold = True
         For d = 0 To mDays - 1
-            ws.Cells(r, startC + d).Value = prodQtyA(p, d)
+            ws.Cells(r, startC + d).Value = recvQtyG(g, d)
             ws.Cells(r, startC + d).NumberFormat = "#,##0"
         Next d
-    Next p
+    Next g
     r = r + 1
 
     ' 入料金额(按组)
@@ -1074,3 +1095,40 @@ Private Function ParseYearMonth(ByVal s As String) As Date
         ParseYearMonth = DateSerial(y, mo, 1)
     End If
 End Function
+
+'=============================================================
+' 归档：把当前 1/2/3 表复制成带月份副本（新建月份时调用）
+'=============================================================
+Private Sub ArchiveCurrentMonth(wb As Workbook)
+    Dim wsSum As Worksheet
+    Set wsSum = wb.Sheets(S_SUMMARY)
+    If Not IsDate(wsSum.Range("A1").Value) Then Exit Sub
+    Dim tag As String
+    tag = Format(CDate(wsSum.Range("A1").Value), "yyyy-mm")
+    ArchiveSheet wb, S_SUMMARY, tag
+    ArchiveSheet wb, S_RECV, tag
+    ArchiveSheet wb, S_SHIP, tag
+End Sub
+
+Private Sub ArchiveSheet(wb As Workbook, ByVal srcName As String, ByVal tag As String)
+    Dim src As Worksheet
+    Set src = wb.Sheets(srcName)
+    ' 空表不归档
+    If src.Cells(src.Rows.Count, 1).End(xlUp).Row <= 2 Then
+        Exit Sub
+    End If
+    Dim newName As String
+    newName = srcName & "_" & tag
+    Dim existing As Worksheet
+    Set existing = Nothing
+    On Error Resume Next
+    Set existing = wb.Sheets(newName)
+    On Error GoTo 0
+    If Not existing Is Nothing Then
+        Application.DisplayAlerts = False
+        existing.Delete
+        Application.DisplayAlerts = True
+    End If
+    src.Copy After:=wb.Sheets(wb.Sheets.Count)
+    wb.Sheets(wb.Sheets.Count).Name = newName
+End Sub
