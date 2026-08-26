@@ -17,6 +17,8 @@ Attribute VB_Name = "营收报表宏"
 '   - 汇总表A1 为报表月份（如 2026-08-01），宏据此重建整月报表
 '   - 异常只影响计算，不改动 6.PLAN
 '   - 单价缺失时向前沿用最近有效单价
+'   - 带达成率的区块把“月合计”列放在日期列最前面
+'   - PKG Group / 产品只按 4.PKG Group分类 自适应增减（汇总/入料/出货跟随）
 '   - 筛选条件/原始数据按“表头名”匹配，新增条件列无需改代码
 '=============================================================
 Option Explicit
@@ -152,8 +154,6 @@ End Sub
 Private Sub LoadPkgMapping(wb As Workbook, msgs As Collection)
     Dim ws As Worksheet
     Set ws = wb.Sheets(S_PKG)
-    Dim wsSum As Worksheet
-    Set wsSum = wb.Sheets(S_SUMMARY)
 
     Set dictPG = CreateObject("Scripting.Dictionary")
     Dim seen As Object
@@ -170,16 +170,10 @@ Private Sub LoadPkgMapping(wb As Workbook, msgs As Collection)
         If p <> "" And g <> "" And Not dictPG.Exists(p) Then dictPG.Add p, g
     Next r
 
-    ' 组顺序1：汇总表模板中的组（保留无产品的组）
+    ' 组顺序：4号表出现过的 PKG Group（首次出现顺序，随4号表自适应增减）
     Dim ord() As String
     ReDim ord(0 To 31)
     n = 0
-    For r = 4 To 200
-        g = Trim(CStr(wsSum.Cells(r, 1).Value))
-        If g <> "" And g <> "总计" Then AddGroup seen, ord, n, g
-    Next r
-
-    ' 组顺序2：4号表新增的组
     For r = 2 To lastR
         g = Trim(CStr(ws.Cells(r, 2).Value))
         AddGroup seen, ord, n, g
@@ -806,18 +800,18 @@ Private Sub WriteRecvSheet(ws As Worksheet, planInA() As Double, recvQtyG() As D
         ws.Cells(r, 1).Value = groups(g)
         ws.Cells(r, 1).Font.Bold = True
         For d = 0 To mDays - 1
-            ws.Cells(r, startC + d).Value = pctInA(g, d)
-            ws.Cells(r, startC + d).NumberFormat = "0.0%"
+            ws.Cells(r, startC + 1 + d).Value = pctInA(g, d)
+            ws.Cells(r, startC + 1 + d).NumberFormat = "0.0%"
         Next d
-        If planInM(g) <> 0 Then ws.Cells(r, startC + mDays).Value = amtInM(g) / planInM(g)
-        ws.Cells(r, startC + mDays).NumberFormat = "0.0%"
-        ws.Cells(r, startC + mDays).Font.Bold = True
+        If planInM(g) <> 0 Then ws.Cells(r, startC).Value = amtInM(g) / planInM(g)
+        ws.Cells(r, startC).NumberFormat = "0.0%"
+        ws.Cells(r, startC).Font.Bold = True
     Next g
 
-    ' 列宽
+    ' 列宽(第2列月合计在前，日期从第3列起)
     ws.Columns(1).ColumnWidth = 16
-    ws.Columns(2).ColumnWidth = 5.5
-    ws.Columns(2 + mDays).ColumnWidth = 9
+    ws.Columns(2).ColumnWidth = 9
+    ws.Columns(3).ColumnWidth = 5.5
 End Sub
 
 '=============================================================
@@ -921,17 +915,18 @@ Private Sub WriteShipSheet(ws As Worksheet, planOutA() As Double, shipQtyG() As 
         ws.Cells(r, 1).Value = groups(g)
         ws.Cells(r, 1).Font.Bold = True
         For d = 0 To mDays - 1
-            ws.Cells(r, startC + d).Value = pctOutA(g, d)
-            ws.Cells(r, startC + d).NumberFormat = "0.0%"
+            ws.Cells(r, startC + 1 + d).Value = pctOutA(g, d)
+            ws.Cells(r, startC + 1 + d).NumberFormat = "0.0%"
         Next d
-        If planOutM(g) <> 0 Then ws.Cells(r, startC + mDays).Value = amtOutM(g) / planOutM(g)
-        ws.Cells(r, startC + mDays).NumberFormat = "0.0%"
-        ws.Cells(r, startC + mDays).Font.Bold = True
+        If planOutM(g) <> 0 Then ws.Cells(r, startC).Value = amtOutM(g) / planOutM(g)
+        ws.Cells(r, startC).NumberFormat = "0.0%"
+        ws.Cells(r, startC).Font.Bold = True
     Next g
 
+    ' 列宽(第2列月合计在前，日期从第3列起)
     ws.Columns(1).ColumnWidth = 16
-    ws.Columns(2).ColumnWidth = 5.5
-    ws.Columns(2 + mDays).ColumnWidth = 9
+    ws.Columns(2).ColumnWidth = 9
+    ws.Columns(3).ColumnWidth = 5.5
 End Sub
 
 '=============================================================
@@ -983,22 +978,22 @@ Private Sub WriteSummarySheet(ws As Worksheet, pctInA() As Double, pctOutA() As 
         ws.Cells(r, 1).Font.Bold = True
         ws.Cells(r, 2).Value = "R%"
         For d = 0 To mDays - 1
-            ws.Cells(r, startC + d).Value = pctInA(gi, d)
-            ws.Cells(r, startC + d).NumberFormat = "0.0%"
+            ws.Cells(r, startC + 1 + d).Value = pctInA(gi, d)
+            ws.Cells(r, startC + 1 + d).NumberFormat = "0.0%"
         Next d
-        If planInM(gi) <> 0 Then ws.Cells(r, startC + mDays).Value = amtInM(gi) / planInM(gi)
-        ws.Cells(r, startC + mDays).NumberFormat = "0.0%"
-        ws.Cells(r, startC + mDays).Font.Bold = True
+        If planInM(gi) <> 0 Then ws.Cells(r, startC).Value = amtInM(gi) / planInM(gi)
+        ws.Cells(r, startC).NumberFormat = "0.0%"
+        ws.Cells(r, startC).Font.Bold = True
         ' B%
         r = r + 1
         ws.Cells(r, 2).Value = "B%"
         For d = 0 To mDays - 1
-            ws.Cells(r, startC + d).Value = pctOutA(gi, d)
-            ws.Cells(r, startC + d).NumberFormat = "0.0%"
+            ws.Cells(r, startC + 1 + d).Value = pctOutA(gi, d)
+            ws.Cells(r, startC + 1 + d).NumberFormat = "0.0%"
         Next d
-        If planOutM(gi) <> 0 Then ws.Cells(r, startC + mDays).Value = amtOutM(gi) / planOutM(gi)
-        ws.Cells(r, startC + mDays).NumberFormat = "0.0%"
-        ws.Cells(r, startC + mDays).Font.Bold = True
+        If planOutM(gi) <> 0 Then ws.Cells(r, startC).Value = amtOutM(gi) / planOutM(gi)
+        ws.Cells(r, startC).NumberFormat = "0.0%"
+        ws.Cells(r, startC).Font.Bold = True
         ws.Range(ws.Cells(r - 1, 1), ws.Cells(r, 1)).Merge
         r = r + 1
     Next gi
@@ -1009,29 +1004,29 @@ Private Sub WriteSummarySheet(ws As Worksheet, pctInA() As Double, pctOutA() As 
     ws.Cells(r, 2).Value = "R%"
     ws.Cells(r, 2).Font.Bold = True
     For d = 0 To mDays - 1
-        If totPlanIn(d) <> 0 Then ws.Cells(r, startC + d).Value = totAmtIn(d) / totPlanIn(d)
-        ws.Cells(r, startC + d).NumberFormat = "0.0%"
+        If totPlanIn(d) <> 0 Then ws.Cells(r, startC + 1 + d).Value = totAmtIn(d) / totPlanIn(d)
+        ws.Cells(r, startC + 1 + d).NumberFormat = "0.0%"
     Next d
-    If totPlanInM <> 0 Then ws.Cells(r, startC + mDays).Value = totAmtInM / totPlanInM
-    ws.Cells(r, startC + mDays).NumberFormat = "0.0%"
-    ws.Cells(r, startC + mDays).Font.Bold = True
+    If totPlanInM <> 0 Then ws.Cells(r, startC).Value = totAmtInM / totPlanInM
+    ws.Cells(r, startC).NumberFormat = "0.0%"
+    ws.Cells(r, startC).Font.Bold = True
     r = r + 1
     ws.Cells(r, 2).Value = "B%"
     ws.Cells(r, 2).Font.Bold = True
     For d = 0 To mDays - 1
-        If totPlanOut(d) <> 0 Then ws.Cells(r, startC + d).Value = totAmtOut(d) / totPlanOut(d)
-        ws.Cells(r, startC + d).NumberFormat = "0.0%"
+        If totPlanOut(d) <> 0 Then ws.Cells(r, startC + 1 + d).Value = totAmtOut(d) / totPlanOut(d)
+        ws.Cells(r, startC + 1 + d).NumberFormat = "0.0%"
     Next d
-    If totPlanOutM <> 0 Then ws.Cells(r, startC + mDays).Value = totAmtOutM / totPlanOutM
-    ws.Cells(r, startC + mDays).NumberFormat = "0.0%"
-    ws.Cells(r, startC + mDays).Font.Bold = True
+    If totPlanOutM <> 0 Then ws.Cells(r, startC).Value = totAmtOutM / totPlanOutM
+    ws.Cells(r, startC).NumberFormat = "0.0%"
+    ws.Cells(r, startC).Font.Bold = True
     ws.Range(ws.Cells(r - 1, 1), ws.Cells(r, 1)).Merge
     ws.Cells(r - 1, 1).Font.Bold = True
 
     ws.Columns(1).ColumnWidth = 14
     ws.Columns(2).ColumnWidth = 7
-    ws.Columns(3).ColumnWidth = 5.5
-    ws.Columns(3 + mDays).ColumnWidth = 9
+    ws.Columns(3).ColumnWidth = 9
+    ws.Columns(4).ColumnWidth = 5.5
 End Sub
 
 '=============================================================
@@ -1039,17 +1034,19 @@ End Sub
 '=============================================================
 Private Sub WriteDateHeader(ws As Worksheet, ByVal r As Long, ByVal startC As Long, ByVal withTotal As Long)
     Dim d As Long
-    For d = 0 To mDays - 1
-        ws.Cells(r, startC + d).Value = mStart + d
-        ws.Cells(r, startC + d).NumberFormat = "m/d"
-        ws.Cells(r, startC + d).Font.Bold = True
-        ws.Cells(r, startC + d).Interior.Color = RGB(242, 242, 242)
-    Next d
+    Dim dOff As Long
+    dOff = startC + withTotal   ' 带月合计时，月合计划在最左，日期右移一列
     If withTotal = 1 Then
-        ws.Cells(r, startC + mDays).Value = "月合计"
-        ws.Cells(r, startC + mDays).Font.Bold = True
-        ws.Cells(r, startC + mDays).Interior.Color = RGB(255, 235, 156)
+        ws.Cells(r, startC).Value = "月合计"
+        ws.Cells(r, startC).Font.Bold = True
+        ws.Cells(r, startC).Interior.Color = RGB(255, 235, 156)
     End If
+    For d = 0 To mDays - 1
+        ws.Cells(r, dOff + d).Value = mStart + d
+        ws.Cells(r, dOff + d).NumberFormat = "m/d"
+        ws.Cells(r, dOff + d).Font.Bold = True
+        ws.Cells(r, dOff + d).Interior.Color = RGB(242, 242, 242)
+    Next d
 End Sub
 
 '=============================================================
