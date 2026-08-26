@@ -19,6 +19,11 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# 最近一次粗排程的"合理性审计"结果，供 schedule() 生成智能告警：
+#   cycle_lots   —— lot_constraints 中互相引用的环内 lot 集合
+#   fallback_used——不动点迭代 60 轮未收敛、已用"自然锚点回退"打破雪崩
+_anchor_audit: dict = {"cycle_lots": set(), "fallback_used": False}
+
 from models import (
     Lot, FlowStep, QTimeConstraint,
     ScheduleEntry, EqpScheduleEntry, QTimeAlert,
@@ -2479,9 +2484,83 @@ def _coarse_earliest_anchors(
             if r.reference_lot and r.start_step:
                 refs.append((lot.lot_name, r))
 
-    def _propagate_refs_once() -> bool:
+    # 检测 reference 依赖环（如 IOU1↔IOU1-f 互相等待对方某步）。
+    # 环内 lot 的锚点互相引用会形成正反馈：A 被 B 推后 → B 又被 A 推后 →
+    # 迭代不收敛、锚点雪崩式推迟到未来几天（实测 60 轮推到 09-03，整条 FTF 链
+    # 被拖 2 天）。修复：环内 lot 作为 reference 源时，取"自然推进锚点"
+    #（第 1 步无引用传播的结果），只传播环外释放时间，打破雪崩。
+    _ref_graph: dict = {}
+    for _ln, _r in refs:
+        _ref_graph.setdefault(_ln, set()).add(_r.reference_lot)
+    _cycle_lots: set = set()
+    _visited: set = set()
+    _stack: list = []
+
+    def _dfs_cycle(n: str):
+        if n in _visited:
+            return
+        _visited.add(n)
+        _stack.append(n)
+        for _m in _ref_graph.get(n, ()):
+            if _m in _stack:  # 找到环
+                _idx = _stack.index(_m)
+                for _x in _stack[_idx:]:
+                    _cycle_lots.add(_x)
+            else:
+                _dfs_cycle(_m)
+        _stack.pop()
+
+    for _n in list(_ref_graph):
+        _dfs_cycle(_n)
+
+    def _apply_manual_delay(target: dict = None) -> bool:
+        """手动延迟作为硬性最早锚：把该 step 及其后步骤整体平移到 delay_to。
+        target 缺省为 anchors（正式传播目标）；传 _natural_anchors 时把手动延迟
+        也并入"自然锚点"，保证打破环后手动延迟（硬约束）仍对环外 lot 生效。"""
+        if target is None:
+            target = anchors
+        changed = False
+        for (lot_name, step_name), delay in manual_delay_map.items():
+            if lot_name not in target:
+                continue
+            lot_obj = lot_by_name[lot_name]
+            lot_flow = flow_map.get(lot_obj.product_name)
+            if not lot_flow:
+                continue
+            try:
+                cur_idx = get_step_index_in_flow(lot_flow, lot_obj.current_step_name)
+            except ValueError:
+                cur_idx = 0
+            try:
+                m_idx = get_step_index_in_flow(lot_flow, step_name)
+            except ValueError:
+                continue
+            rel = m_idx - cur_idx
+            if rel < 0 or rel >= len(target[lot_name]):
+                continue
+            lst = target[lot_name]
+            if delay > lst[rel]:
+                shift = delay - lst[rel]
+                for j in range(rel, len(lst)):
+                    lst[j] = lst[j] + shift
+                changed = True
+        return changed
+
+    # 自然推进锚点（无引用传播，含自身手动延迟），供环内引用源使用：
+    # 环内 lot 的锚点互相引用会形成正反馈（A 被 B 推后 → B 又被 A 推后 → 迭代
+    # 不收敛、锚点雪崩式推迟数天）。打破方式：引用源取"自然锚点"（该 lot 自己
+    # 能最早到达的时间），只传播环外释放，环内互相等待收敛到各自自然就绪时刻。
+    _natural_anchors = {_ln: list(_lst) for _ln, _lst in anchors.items()}
+    if manual_delay_map:
+        _apply_manual_delay(_natural_anchors)
+
+    def _propagate_refs_once(use_natural_for_cycle: bool = False) -> bool:
         """单轮 reference 传播：被约束 lot 的 start_step 不得早于 reference 释放时刻。
-        返回该轮是否发生了变化。"""
+        返回该轮是否发生了变化。
+        use_natural_for_cycle=True 时，环内 lot 作为引用源取"自然锚点"（见
+        _natural_anchors 说明），用于打破真·循环引用（步骤间直接互相等待）造成的
+        雪崩——仅在不动点迭代 60 轮未收敛时才启用（普通场景保持实际锚点传播，
+        保证与贪婪排程阶段的实际引用释放时间一致）。"""
         changed = False
         for lot_name, r in refs:
             ref_lot_name = r.reference_lot
@@ -2507,7 +2586,10 @@ def _coarse_earliest_anchors(
                 # reference 步骤在当前 lot 剩余流程之前（如已完成）：跳过
                 continue
             else:
-                ref_anchor_t = anchors[ref_lot_name][ref_rel]
+                if use_natural_for_cycle and ref_lot_name in _cycle_lots:
+                    ref_anchor_t = _natural_anchors[ref_lot_name][ref_rel]
+                else:
+                    ref_anchor_t = anchors[ref_lot_name][ref_rel]
                 ref_ct = get_step_ct(ct_lookup, ref_flow[ref_flow_idx].product_name,
                                      ref_flow[ref_flow_idx].step_number, ref_lot.qty)
                 release = _ref_release_offset(ref_anchor_t + timedelta(minutes=ref_ct), r.start_mod, [])
@@ -2535,35 +2617,6 @@ def _coarse_earliest_anchors(
                 changed = True
         return changed
 
-    def _apply_manual_delay() -> bool:
-        """手动延迟作为硬性最早锚：把该 step 及其后步骤整体平移到 delay_to。"""
-        changed = False
-        for (lot_name, step_name), delay in manual_delay_map.items():
-            if lot_name not in anchors:
-                continue
-            lot_obj = lot_by_name[lot_name]
-            lot_flow = flow_map.get(lot_obj.product_name)
-            if not lot_flow:
-                continue
-            try:
-                cur_idx = get_step_index_in_flow(lot_flow, lot_obj.current_step_name)
-            except ValueError:
-                cur_idx = 0
-            try:
-                m_idx = get_step_index_in_flow(lot_flow, step_name)
-            except ValueError:
-                continue
-            rel = m_idx - cur_idx
-            if rel < 0 or rel >= len(anchors[lot_name]):
-                continue
-            lst = anchors[lot_name]
-            if delay > lst[rel]:
-                shift = delay - lst[rel]
-                for j in range(rel, len(lst)):
-                    lst[j] = lst[j] + shift
-                changed = True
-        return changed
-
     # 初次 reference 传播
     for _ in range(50):
         if not _propagate_refs_once():
@@ -2584,21 +2637,23 @@ def _coarse_earliest_anchors(
             if not (m_changed or r_changed):
                 break
 
-    # ---- 3. 紧 Q-time 链紧凑传播：链尾被推迟时，整链后移 ----
-    # 移除 has_internal_pin 跳过：循环引用链（如 PC↔real 的 UF DISPENSE 门控）也整体压实。
-    # 链内 reference 钉住的延后信息同样在粗排程阶段基于"链尾锚点-全链CT"反推链首，
-    # 保证跨 lot 循环链整体锚定在手延迟链（手动延迟按『最早』语义，允许链首后移）。
+    # ---- 3. 紧 Q-time 链紧凑传播：仅当链逼近 Q-time 预算上限时，才把链收压 ----
+    # 老实现无条件把整条链前缀压成背靠背，会把"链内某步被钉晚"反向传导给链首；
+    # 配合跨 lot 循环引用（IOU1↔IOU1-f、PC↔real 的相互等待）形成正反馈雪崩。
+    # 现改为：链内有序化总是保证；反向背靠背压实只在"整链时长逼近 min_qtime
+    # 预算"时启用（紧链如 UF 240min 需要压实保 Q；FTF 10080min 无需压实，
+    # 链首保持自然锚点）。手动延迟按『最早』语义：链尾锚点只作下界。
     def _compact_chain_blocks() -> bool:
-        """整链块压实：把每条 Q-time 链作为整体，按"链尾外部锚点 + 链内步骤背靠背"
-        重排，使链内紧凑、各步有序且不超 Q-time 预算。
+        """整链块有序化 + 受 Q-time 预算约束的紧凑压实。
 
         实现（单向后移，保证不动点收敛）：
-        1) 反向重排：从链尾锚点（手动延迟 / reference 释放 / 自然推进的最晚者）逐
-           步向前推，pos[k] = pos[k+1] - CT[k] - wait[k]，并夹住各步已有下界；
-        2) 正向顺延：若链中某步被自身下界（如 reference 钉住 DISPENSE）顶到较晚，
-           则其后步骤（含链尾）须整体顺延，保证链内有序；
-        3) 只增不减：链尾后移时，链尾之后的步骤同步平移，保持 lot 内顺序。
-        手动延迟按『最早』语义：链尾锚点只作下界，链块在其允许范围内尽量早排。
+        1) 正向顺延：被 reference / 手动延迟钉住的中间步骤会把它之后的步骤带后；
+        2) 判定整链总时长是否已逼近 min_qtime（合并后最紧的 Q-time 预算）上限；
+        3) 仅当逼近预算时，才做反向背靠背压实：从链尾锚点逐 k 前推
+           pos[k] = pos[k+1] - CT[k] - wait[k]，把链重新收进预算；
+        4) 再正向顺延一次保持链内有序；链尾后移时，链尾之后的步骤同步平移。
+        不逼近预算时保持各步自身锚点，避免把中间步骤的延后反向传导给链首
+        （这正是跨 lot 循环引用下"整链被推到未来数天"雪崩的根因）。
         """
         changed = False
         for lot in lots:
@@ -2649,15 +2704,37 @@ def _coarse_earliest_anchors(
                         if step_cinfo:
                             w = _effective_chain_wait(lot, step_cinfo, priority_wait_map)
                         waits.append(w)
-                # 反向背靠背重排：链尾固定为外部锚点，前缀逐步前推并夹住下界
-                pos = [None] * n
-                pos[n - 1] = lst[e_rel]
-                for k in range(n - 2, -1, -1):
-                    pos[k] = pos[k + 1] - timedelta(minutes=cts[k] + waits[k])
-                    raw = lst[s_rel + k]
-                    if pos[k] < raw:
-                        pos[k] = raw
-                # 正向顺延：某步被自身下界顶晚时，其后（含链尾）保持有序
+                # ---- 整链有序化 + 仅受 Q-time 预算约束的反向压实 ----
+                # 顺序：先正向顺延（被 reference / 手动延迟钉住的中间步骤会把它
+                # 之后的步骤带后）；再用链的 min_qtime（合并后最紧的 Q-time 预算）
+                # 判定"整链是否已被拉长到接近预算上限"——只有此时才把前缀步骤做
+                # 背靠背反向压实，把链重新收进预算（PC↔real 的 UF 链 min_qtime=240
+                # 属于紧链，需要压实保 Q）。
+                # 关键改动：不再无条件把整条链前缀压成背靠背——那会把"链内某步被
+                # 钉晚"反向传导给链首（如 FTF 被钉晚 → FTF-OPUT-MOUNT 被拉晚），
+                # 在跨 lot 循环引用（IOU1↔IOU1-f 互相等待）下形成正反馈雪崩，
+                # 实测整条 FTF 链被推到未来 2 天（09/01 → 09/03）。FTF 链
+                # min_qtime=10080（7 天），链内间隙远小于预算，无需压实，
+                # MOUNT 保持在自然锚点（不再被动推迟）。
+                pos = list(lst[s_rel:e_rel + 1])
+                # 1) 正向顺延：保证链内有序
+                for k in range(1, n):
+                    need = pos[k - 1] + timedelta(minutes=cts[k - 1] + waits[k - 1])
+                    if pos[k] < need:
+                        pos[k] = need
+                # 2) 整链总时长是否逼近 min_qtime 预算（含余量）
+                chain_budget = float(info.get("min_qtime") or 0)
+                total_dur = (pos[n - 1] - pos[0]).total_seconds() / 60.0
+                need_pull = (chain_budget > 0
+                             and total_dur > chain_budget - QTIGHT_SAFETY_MARGIN)
+                # 3) 反向背靠背压实（仅当整链逼近预算上限时；后移只缩小链内间隙，
+                #    不违反任何规则，也不会把"钉晚"反向传导给链首）
+                if need_pull:
+                    for k in range(n - 2, -1, -1):
+                        bk = pos[k + 1] - timedelta(minutes=cts[k] + waits[k])
+                        if bk > pos[k]:
+                            pos[k] = bk
+                # 4) 再次正向顺延：被压实步骤可能顶动其后步骤
                 for k in range(1, n):
                     need = pos[k - 1] + timedelta(minutes=cts[k - 1] + waits[k - 1])
                     if pos[k] < need:
@@ -2681,15 +2758,133 @@ def _coarse_earliest_anchors(
         return changed
 
     # ---- 2.5 + 3 不动点迭代：手动延迟 / reference 传播 / 链块压实 单调前移直至收敛 ----
-    for _it in range(60):
-        _fp_changed = False
-        if manual_delay_map:
-            _fp_changed |= _apply_manual_delay()
-        _fp_changed |= _propagate_refs_once()
-        _fp_changed |= _compact_chain_blocks()
-        if not _fp_changed:
-            break
+    # 若 60 轮未收敛，说明存在"真·循环引用"（如 A.FTF 等 B.FTF 结束、B.FTF 又等
+    # A.FTF 结束，步骤间直接互相等待），互相推后无下界 → 雪崩。此时启用回退：
+    # 环内 lot 锚点重置为自然锚点、引用源改取自然锚点重新迭代，打破雪崩
+    # （环外释放时间仍正常传播；该回退同时被 schedule() 的合理性检测识别并告警）。
+    def _fixed_point(use_natural_for_cycle: bool) -> bool:
+        for _it in range(60):
+            _fp_changed = False
+            if manual_delay_map:
+                _fp_changed |= _apply_manual_delay()
+            _fp_changed |= _propagate_refs_once(use_natural_for_cycle)
+            _fp_changed |= _compact_chain_blocks()
+            if not _fp_changed:
+                return True
+        return False
+
+    _converged = _fixed_point(False)
+    if not _converged and _cycle_lots:
+        # 雪崩回退：环内 lot 复位到自然锚点后重跑
+        for _ln in list(_cycle_lots):
+            if _ln in anchors:
+                anchors[_ln] = list(_natural_anchors[_ln])
+        _fixed_point(True)
+
+    # 供 schedule() 做智能告警
+    _anchor_audit["cycle_lots"] = set(_cycle_lots)
+    _anchor_audit["fallback_used"] = (not _converged and bool(_cycle_lots))
     return anchors
+
+
+def _detect_schedule_anomalies(
+    le: list,
+    lots: list,
+    flow_map: dict,
+    ct_lookup: dict,
+    priority_wait_map: dict,
+    anchor_audit: dict = None,
+) -> list[str]:
+    """排程结果"合理性"智能检测，返回人类可读的告警列表。
+
+    识别以下不合理情形（不改变排程结果，只做告警）：
+    1. lot_constraints 存在引用环（A↔B 互相等待）——互相等待可能被迭代无限推迟；
+    2. 引用环雪崩已发生并被"自然锚点回退"自动打破（粗排程 60 轮未收敛）；
+    3. 同一 lot 相邻步骤之间出现异常等待间隙（远超 CT+wait，如
+       "MOUNT 09:40 → FTF 17:59"——正是循环引用雪崩/设备竞争拖链的典型症状）。
+    """
+    warnings: list[str] = []
+
+    # ---- 1/2. 引用环与雪崩回退（数据级 + 粗排程审计） ----
+    ref_graph: dict[str, set[str]] = {}
+    for lot in lots:
+        for r in lot.references or []:
+            if r.reference_lot and r.start_step:
+                ref_graph.setdefault(lot.lot_name, set()).add(r.reference_lot)
+    _visited: set[str] = set()
+    _stack: list[str] = []
+    _cycle_lots: set[str] = set()
+
+    def _dfs(n: str):
+        if n in _visited:
+            return
+        _visited.add(n)
+        _stack.append(n)
+        for m in ref_graph.get(n, ()):
+            if m in _stack:
+                _idx = _stack.index(m)
+                for x in _stack[_idx:]:
+                    _cycle_lots.add(x)
+            else:
+                _dfs(m)
+        _stack.pop()
+
+    for n in list(ref_graph):
+        _dfs(n)
+
+    if _cycle_lots:
+        names = sorted(_cycle_lots)
+        warnings.append(
+            f"引用环检测：lot_constraints 中 {', '.join(names)} 互相引用（互相等待对方某步），"
+            "若不满足收敛条件会被无限推迟；请核对配置是否确实需要互为前置。")
+        if (anchor_audit or {}).get("fallback_used"):
+            warnings.append(
+                f"引用环雪崩已发生：{', '.join(names)} 的相互等待导致锚点被无限推迟，"
+                "已自动采用'自然就绪时刻'回退打破雪崩（结果按各 lot 自身最早可达时间排程）。")
+
+    # ---- 3. 相邻步骤异常等待间隙（最终排程级） ----
+    lot_entries: dict[str, list] = {}
+    for e in le:
+        lot_entries.setdefault(e.lot_name, []).append(e)
+
+    lot_by_name = {l.lot_name: l for l in lots}
+    for ln, entries in lot_entries.items():
+        lot = lot_by_name.get(ln)
+        if lot is None:
+            continue
+        pf = flow_map.get(lot.product_name)
+        if not pf:
+            continue
+        try:
+            cur_idx = get_step_index_in_flow(pf, lot.current_step_name)
+        except ValueError:
+            cur_idx = 0
+        step_idx = {s.step_name: i for i, s in enumerate(pf)}
+        # 按流程顺序排列已排步骤
+        ordered = sorted(
+            [e for e in entries if e.step_name in step_idx and step_idx[e.step_name] >= cur_idx],
+            key=lambda e: step_idx[e.step_name])
+        wait = get_step_wait_time(lot.priority[0], lot.priority[1], priority_wait_map)
+        gap_warns: list[tuple[float, str]] = []
+        for a, b in zip(ordered, ordered[1:]):
+            i_a = step_idx[a.step_name]
+            i_b = step_idx[b.step_name]
+            if i_b != i_a + 1:
+                continue  # 中间还有未排步骤（如跳过检查站），不适用相邻间隙判定
+            step_obj = pf[i_a]
+            ct = get_step_ct(ct_lookup, step_obj.product_name, step_obj.step_number, lot.qty)
+            expected = ct + wait
+            actual_min = (b.start_time - a.end_time).total_seconds() / 60.0
+            if actual_min > max(240.0, expected * 5.0):
+                gap_warns.append((actual_min,
+                    f"异常间隙：{ln} 的 {a.step_name}（{a.start_time:%m/%d %H:%M} 完成）"
+                    f"与下一站 {b.step_name}（{b.start_time:%m/%d %H:%M} 才开始）"
+                    f"间隔 {actual_min:.0f} 分钟，远超预期约 {expected:.0f} 分钟"
+                    "——请核查是否被引用环/设备冲突不合理拖后。"))
+        # 每 lot 最多报 3 条最严重的间隙告警，避免刷屏
+        for _g, _msg in sorted(gap_warns, reverse=True)[:3]:
+            warnings.append(_msg)
+    return warnings
 
 
 def _ref_release_offset(ref_end: datetime, start_mod, shift_times):
@@ -3023,6 +3218,9 @@ def schedule(
     tight_chain_threshold: Optional[int] = None,
     qtight_safety_margin: Optional[int] = None,
     chain_wait_safety: Optional[int] = None,
+    # ---- 合理性告警输出（可选）：调用方传入 list，排程结束后把智能检测到的
+    #      不合理情形（引用环/雪崩回退/异常等待间隙）追加进去 ----
+    out_warnings: Optional[list] = None,
 ) -> tuple[list[ScheduleEntry], list[EqpScheduleEntry], list[QTimeAlert]]:
     """执行启发式排程。
 
@@ -3750,5 +3948,17 @@ def schedule(
                 _update_blocked_ready_time(name, state, pending_refs, ref_release_times)
 
         current_time = max(current_time, end_time)
+
+    # ---- 排程合理性智能检测（不改变结果，只告警） ----
+    try:
+        _warns = _detect_schedule_anomalies(
+            lot_entries, lots, flow_map, ct_lookup, priority_wait_map or {},
+            anchor_audit=dict(_anchor_audit))
+        for _w in _warns:
+            logger.warning("[排程合理性] %s", _w)
+        if out_warnings is not None:
+            out_warnings.extend(_warns)
+    except Exception as _e:  # 检测失败不影响排程结果
+        logger.warning("排程合理性检测异常: %s", _e)
 
     return lot_entries, eqp_entries, qtime_alerts
