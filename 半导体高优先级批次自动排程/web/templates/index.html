@@ -443,6 +443,7 @@ const REGULAR_TABLES = ['eqp_constraint.csv', 'lot_list.csv'];
 const SPECIAL_TABLES = ['lot_constraints.csv', 'manual_adjust.csv', 'special_lot_step.csv', 'step_time_window.csv', 'special_eqp.csv'];
 
 // 下拉列配置：{ 表名: { 列名: { type: 'select'|'datalist', options: [[value, label], ...] } } }
+//  type=select：只能从下拉选；type=datalist：下拉建议 + 允许自由输入
 const DROPDOWN_COLUMNS = {
   'eqp_constraint.csv': {
     'date': { type: 'datalist', options: [['-1', '每天']] },
@@ -458,8 +459,36 @@ const DROPDOWN_COLUMNS = {
   'lot_constraints.csv': {
     'start_mod': { type: 'datalist', options: [['', '无偏移'], ['0.5', '0.5小时'], ['1', '1小时'], ['2', '2小时'], ['4', '4小时'], ['shift', 'shift（下一班次）'], ['shift_day', 'shift_day（下一白班）']] }
   },
+  'lot_list.csv': {
+    'lot_state': { type: 'select', options: [['', '空闲'], ['wait', 'wait（等待）'], ['running', 'running（运行中）'], ['hold', 'hold（挂起）']] },
+    'priority': { type: 'datalist', options: [
+      ['1-1', '1-1（最高）'], ['1-2', '1-2'], ['1-3', '1-3'], ['1-4', '1-4'],
+      ['2-1', '2-1'], ['2-2', '2-2'], ['2-3', '2-3'], ['2-4', '2-4'],
+      ['3-1', '3-1'], ['3-2', '3-2'], ['3-3', '3-3'], ['3-4', '3-4'],
+      ['4-1', '4-1'], ['4-2', '4-2'], ['4-3', '4-3'], ['4-4', '4-4'],
+      ['5-1', '5-1'], ['5-2', '5-2'], ['5-3', '5-3'], ['5-4', '5-4'],
+      ['6-1', '6-1'], ['6-2', '6-2'], ['6-3', '6-3'], ['6-4', '6-4'],
+      ['7-1', '7-1'], ['7-2', '7-2'], ['7-3', '7-3'], ['7-4', '7-4'],
+      ['8-1', '8-1'], ['8-2', '8-2'], ['8-3', '8-3'], ['8-4', '8-4'],
+      ['9-1', '9-1'], ['9-2', '9-2'], ['9-3', '9-3'], ['9-4', '9-4']
+    ] }
+  },
+  'qtime.csv': {
+    'Q-time_start_mod': { type: 'select', options: [['track in', 'track in'], ['track out', 'track out']] },
+    'Q-time_end_mod': { type: 'select', options: [['track in', 'track in'], ['track out', 'track out']] }
+  },
+  'special_eqp.csv': {
+    'together': { type: 'select', options: [['true', 'true（恒组批同炉）'], ['false', 'false（并行/多槽）']] }
+  },
+  'shift_config.csv': {
+    'shift_name': { type: 'datalist', options: [['白班', '白班'], ['夜班', '夜班']] }
+  },
+  'priority_wait.csv': {
+    'ext_priority': { type: 'select', options: [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5', '5'], ['6', '6'], ['7', '7'], ['8', '8'], ['9', '9']] },
+    'int_priority': { type: 'select', options: [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5', '5'], ['6', '6'], ['7', '7'], ['8', '8'], ['9', '9']] }
+  },
   'manual_adjust.csv': {
-    'start_mod': { type: 'datalist', options: [['', '无偏移'], ['0.5', '0.5小时'], ['1', '1小时'], ['2', '2小时'], ['4', '4小时'], ['shift', 'shift（下一班次）'], ['shift_day', 'shift_day（下一白班）']] }
+    'mode': { type: 'select', options: [['delay', 'delay（不早于）'], ['pin', 'pin（精确锁定）']] }
   }
 };
 

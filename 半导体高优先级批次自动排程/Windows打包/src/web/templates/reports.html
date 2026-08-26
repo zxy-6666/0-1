@@ -330,8 +330,6 @@ tr.adjusted:hover td { background: #ffe7ba !important; }
       <button class="warn btn-sm" id="saveAdjustsBtn" onclick="saveAdjusts()" style="padding:6px 14px;font-size:13px;">保存到文件</button>
       <button class="btn-sm" id="reloadAdjustsBtn" onclick="reloadAdjusts()" style="padding:6px 14px;">从文件加载</button>
       <button class="btn-sm" onclick="openDueModal()" style="padding:6px 14px;" title="输入期望完工时间，反推各步最晚开始">交期反推</button>
-      <button class="btn-sm" onclick="document.getElementById('adjustUploadInput').click()" style="padding:6px 14px;" title="上传 manual_adjust 规则文件（.csv/.xlsx），覆盖当前规则">上传规则文件</button>
-      <input type="file" id="adjustUploadInput" accept=".csv,.xlsx" style="display:none;" onchange="uploadAdjustFile(this)">
     </div>
     <div class="table-wrap" style="max-height:200px;margin-bottom:16px;" id="adjustsTableWrap">
       <table>
@@ -1180,27 +1178,6 @@ async function deleteAdjust(btn) {
   } catch (e) {
     console.error('[deleteAdjust]', e);
     showToast('删除失败: ' + e.message, 'error');
-  }
-}
-
-async function uploadAdjustFile(input) {
-  const file = input.files && input.files[0];
-  input.value = '';
-  if (!file) return;
-  if (!confirm('上传规则文件将覆盖当前全部手动调整规则，确定继续吗？')) return;
-  try {
-    const fd = new FormData();
-    fd.append('file', file);
-    const res = await fetch('/api/manual-adjust/upload', { method: 'POST', body: fd });
-    const data = await res.json();
-    if (data.error) { showToast('上传失败: ' + data.error, 'error'); return; }
-    currentAdjusts = data.manual_adjusts || [];
-    renderAdjustsTable();
-    const msg = '已加载 ' + data.count + ' 条规则' + (data.skipped ? '（跳过 ' + data.skipped + ' 条无效行）' : '') + '，请点击「重新生成」生效';
-    showToast(msg, data.skipped ? 'info' : 'success');
-  } catch (e) {
-    console.error('[uploadAdjustFile]', e);
-    showToast('上传失败: ' + e.message, 'error');
   }
 }
 

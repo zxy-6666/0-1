@@ -161,6 +161,7 @@ def schedule_optimized(
         # 直接复用同一列表会导致跨轮污染、结果不可复现（历史 bug）。
         iter_lots = [copy.copy(l) for l in lots]
 
+        iter_warnings: list[str] = []
         try:
             le, ee, qa = schedule(
                 lots=iter_lots, flows=flows, ct_lookup=ct_lookup, qtimes=qtimes,
@@ -180,6 +181,7 @@ def schedule_optimized(
                 tight_chain_threshold=tight_chain_threshold,
                 qtight_safety_margin=qtight_safety_margin,
                 chain_wait_safety=chain_wait_safety,
+                out_warnings=iter_warnings,
             )
         except Exception as e:
             if verbose:
@@ -223,6 +225,7 @@ def schedule_optimized(
                     "score": score,
                     "min_qtime_margin": margin,
                     "completion_times": obj["completion_times"],
+                    "schedule_warnings": list(iter_warnings),
                 }
                 no_improve = 0
             else:
@@ -232,7 +235,8 @@ def schedule_optimized(
             if best_violating is None or len(errors) < best_violating_count:
                 best_violating = (le, ee, qa)
                 best_violating_count = len(errors)
-                best_violating_meta = {"iter": it, "errors": list(errors)}
+                best_violating_meta = {"iter": it, "errors": list(errors),
+                                       "schedule_warnings": list(iter_warnings)}
 
         # 自适应早停：已得合法解后连续 N 轮无改进则提前终止（0=关闭）
         if (early_stop_patience > 0 and best is not None
@@ -408,7 +412,8 @@ def schedule_optimized(
                     best_ref_meta = {"iter": 10000 + _t_iters, "lot_order": nb_lo,
                                      "eqp_prefs": nb_ep, "chain_placement": nb_ch,
                                      "score": nb_score, "min_qtime_margin": nb_margin,
-                                     "completion_times": _obj["completion_times"]}
+                                     "completion_times": _obj["completion_times"],
+                                     "schedule_warnings": list(iter_warnings)}
 
             # 清理过期 tabu
             for k in [k for k, v in tabu.items() if v <= _t_iters]:
@@ -461,6 +466,7 @@ def schedule_optimized(
             "total_iterations": iters_done,
             "warning": "未找到完全合法解，已返回违规最少的解",
             "violations": (best_violating_meta or {}).get("errors", []),
+            "schedule_warnings": list((best_violating_meta or {}).get("schedule_warnings", [])),
             "seed": seed,
         }
     else:
