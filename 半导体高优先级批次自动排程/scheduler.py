@@ -32,6 +32,12 @@ SCHEDULE_WINDOW_DAYS = 365
 TIGHT_CHAIN_THRESHOLD = 240  # 紧链判定阈值（分钟）
 QTIGHT_SAFETY_MARGIN = 90  # 紧 Q-time 起点延迟的安全余量（分钟）：预留端步骤因设备竞争/换班被推后的缓冲
 
+# 恒组批（together=true）等待凑批窗口（分钟）：到达同一"批次步骤"（如 CURE）的时间差在此
+# 窗口内的不同 Lot 会合并进同一次同炉治程（最多 max_lots/max_qty）。窗口越大越倾向凑满一炉
+# 减少设备次数，但会把先到 Lot 的出批时间推迟；应不超过该步骤常见紧 Q-time 预算，避免先到
+# Lot 因等待被推出 Q-time（典型如 DISPENSE→CURE=240）。
+BATCH_WAIT_WINDOW = 240
+
 # 紧链整链块（_tight_chain_defer）单 Lot 连续 defer 上限：整链块放不下时按 +30min 步进等待
 # 设备释放。若某一 Lot 连续达到该次数仍未成功，则放弃整链块（退回拆链/单步调度），保证调度
 # 终止——避免在单机瓶颈（如 UF-CURE 只剩 PKPOV001 一台）下无限磨步把"计算超时"。
@@ -1153,6 +1159,151 @@ def _register_special_eqp_usage(
         bs["active"].append((lot_name, lot_qty, end_time))
 
 
+def _compute_batch_slot(
+    eqp_id: str,
+    lot,
+    step,
+    ct: float,
+    ready_time: datetime,
+    spec,
+    lot_state: dict,
+    special_lot_step_lookup: dict,
+    ct_lookup: dict,
+    eqp_batch_state: dict,
+    priority_wait_map: dict,
+    wait_window: int = BATCH_WAIT_WINDOW,
+    cur_time: Optional[datetime] = None,
+):
+    """恒组批（together=true）批次槽位：计算当前 Lot 在"批次步骤"（如 CURE）的槽位。
+
+    核心：等待凑批 —— 预估其它 Lot 到达同一批次步骤的时间，若在窗口内则并入同一批次，
+    批次统一在 max(本 Lot 就绪, 各成员预估到达) 时刻开始；成员后续到达时经 pending 记录
+    加入同一批次，避免单炉只装一个 Lot 造成的设备串行与 Q-time 拉爆。
+
+    cur_time: 调度器真实推进时间。busy_until 是否已过的判定必须用它，否则等待中的 Lot
+    会一直拿着陈旧 ready_time，误判"批次仍在运行"而无限等待 / 或错过批次导致步骤丢失。
+
+    返回 (can_use, slot)：
+      - can_use=False 且 slot=busy_until：设备正被上一批次占用，需等待。
+      - can_use=True 且 slot=T：本 Lot 槽位为 T（批次统一开始时间，可晚于 ready_time）。
+    """
+    batch_key = eqp_id
+    if batch_key not in eqp_batch_state:
+        eqp_batch_state[batch_key] = {
+            "spec": spec,
+            "waiting": [],
+            "active": [],
+            "busy_until": None,
+            "pending": None,   # {start, end, members: {lot_name: est_ready}}
+        }
+    bs = eqp_batch_state[batch_key]
+    now = cur_time if cur_time is not None else ready_time
+
+    # 清理：已结束的活跃 Lot（busy_until 过期清理放到 pending 判定之后）
+    bs["active"] = [(ln, q, et) for ln, q, et in bs["active"] if et > now]
+
+    # 先尝试加入待凑批次：本 Lot 是成员且就绪不晚于批次开始 → 并入同一批次。
+    # 必须放在"批次过期清理"之前：成员 Lot 可能因 reference 阻塞等原因晚于 cur_time
+    # 才被拾取，若先按 cur_time 清掉 pending（now>=busy_until 恰好命中），成员会丢失
+    # 资格、错过同批而另开新批次（如 PC1 批次在 11:39 等 real1，real1 17:13 才被拾取，
+    # 此时 busy_until=17:13==now，pending 被误清 → real1 落单且被推到 17:13 超 Q）。
+    pending = bs.get("pending")
+    if pending is not None:
+        if lot.lot_name in pending.get("members", {}) and ready_time <= pending["start"]:
+            return True, pending["start"]
+        # 非成员 / 已错过批次开始：若批次仍在运行则等待
+        if bs["busy_until"] is not None and now < bs["busy_until"]:
+            return False, bs["busy_until"]
+
+    # 批次结束后清理
+    if bs["busy_until"] is not None and now >= bs["busy_until"]:
+        bs["busy_until"] = None
+        bs["pending"] = None
+
+    # 设备运行中（上一批次未结束）：等待，不允许新开批次
+    if bs["busy_until"] is not None:
+        return False, bs["busy_until"]
+
+    # 容量检查（等待中 + 活跃中）
+    in_lots = len(bs["waiting"]) + len(bs["active"])
+    in_qty = (sum(q for _, q, _, _ in bs["waiting"]) + sum(q for _, q, _ in bs["active"]))
+    if in_lots >= spec.max_lots:
+        return False, bs["busy_until"] or ready_time
+    if in_qty + lot.qty > spec.max_qty:
+        return False, bs["busy_until"] or ready_time
+
+    # 开新批次：本批次最早开炉时刻 = max(本 Lot 就绪, 设备实际空闲时刻)。
+    # 不能用纯 ready_time：等待中的 Lot（如 CURE 等上一批次结束）ready_time 仍是旧的，
+    # 若以它开新批次会落在上一批次运行期间（重叠超容量）。now 是调度器真实推进时间，
+    # 批次从 max(ready_time, now) 起才算设备真正空闲可开炉。
+    open_time = now if now > ready_time else ready_time
+    _lot_suffix = step.step_name.split("-")[-1]
+    _lot_stage = getattr(step, "stage_name", "")
+    batch_start = open_time
+    members = {}
+    member_qty = lot.qty
+    for other_name, other_state in lot_state.items():
+        if len(members) >= spec.max_lots - 1:
+            break
+        if other_name == lot.lot_name or other_state["done"]:
+            continue
+        other_lot = other_state["lot"]
+        other_remaining = other_state["remaining_steps"]
+        other_idx = other_state["step_index"]
+        if other_idx >= len(other_remaining):
+            continue
+        # 找到该 Lot 前方第一个"同批次步骤"：
+        #   同 product → 精确同名；跨 product → 同工艺后缀 + 同 stage（如 AB1-UF）才可共炉，
+        #   避免把 DAF-CURE 误配到 UF-CURE。
+        target = None
+        target_idx = -1
+        for _j in range(other_idx, len(other_remaining)):
+            _s = other_remaining[_j]
+            if other_lot.product_name == lot.product_name:
+                if _s.step_name == step.step_name:
+                    target, target_idx = _s, _j
+                    break
+            else:
+                if (_s.step_name.split("-")[-1] == _lot_suffix
+                        and (not _lot_stage or _s.stage_name == _lot_stage)):
+                    target, target_idx = _s, _j
+                    break
+        if target is None:
+            continue  # 该 Lot 已越过本批次步骤，不再考虑
+        # 该 Lot 的目标步骤必须能用此设备
+        other_eqp_ids = list(target.eqp_ids) if target.eqp_ids else ["-"]
+        if special_lot_step_lookup:
+            sls_key = (other_lot.lot_name, target.step_name)
+            if sls_key in special_lot_step_lookup:
+                sls = special_lot_step_lookup[sls_key]
+                if sls.special_eqp:
+                    other_eqp_ids = list(sls.special_eqp)
+        if eqp_id not in other_eqp_ids:
+            continue
+        # 估算该 Lot 到达目标步骤的时间（沿 remaining 累加 CT + 步间等待，忽略设备竞争）
+        est = other_state["ready_time"]
+        for _s in other_remaining[other_idx:target_idx]:
+            _sct = get_step_ct(ct_lookup, _s.product_name, _s.step_number, other_lot.qty)
+            _swait = get_step_wait_time(other_lot.priority[0], other_lot.priority[1], priority_wait_map)
+            est += timedelta(minutes=_sct) + timedelta(minutes=_swait)
+        if est > open_time + timedelta(minutes=wait_window):
+            continue
+        if member_qty + other_lot.qty > spec.max_qty:
+            continue
+        member_qty += other_lot.qty
+        members[other_name] = est
+        if est > batch_start:
+            batch_start = est
+
+    # 记录待凑批次（含成员名单，供后续到达的成员加入同一批次）
+    if members:
+        bs["pending"] = {
+            "start": batch_start,
+            "members": {name: est for name, est in members.items()},
+        }
+    return True, batch_start
+
+
 # ============================================================
 # 链调度逻辑
 # ============================================================
@@ -1798,22 +1949,32 @@ def _try_schedule_chain_forward(
             else:
                 _conflicts = _eqp_conflict_scores(eqp_ids, lot, lot_state, qtime_by_product, flow_map)
                 for eqp_id in eqp_ids:
-                    if eqp_id in special_eqp_map:
-                        can_use, adj_time = _check_special_eqp_available(
-                            eqp_id, lot.qty, ready_time, ct,
-                            special_eqp_map, eqp_batch_state, machine_intervals,
+                    if eqp_id in special_eqp_map and special_eqp_map[eqp_id].together:
+                        can_use, adj_time = _compute_batch_slot(
+                            eqp_id, lot, step, ct, ready_time, special_eqp_map[eqp_id],
+                            lot_state, special_lot_step_lookup, ct_lookup,
+                            eqp_batch_state, priority_wait_map,
                             cur_time=cur_time)
                         if not can_use:
                             continue
-                        ready_time = max(ready_time, adj_time)
-                    check_time = ready_time
-                    if _is_parallel_eqp(eqp_id, special_eqp_map):
+                        check_time = adj_time
                         avail = check_time
                     else:
-                        avail = _find_earliest_slot(
-                            machine_intervals.get(eqp_id, []),
-                            check_time,
-                            timedelta(minutes=ct))
+                        if eqp_id in special_eqp_map:
+                            can_use, adj_time = _check_special_eqp_available(
+                                eqp_id, lot.qty, ready_time, ct,
+                                special_eqp_map, eqp_batch_state, machine_intervals)
+                            if not can_use:
+                                continue
+                            ready_time = max(ready_time, adj_time)
+                        check_time = ready_time
+                        if _is_parallel_eqp(eqp_id, special_eqp_map):
+                            avail = check_time
+                        else:
+                            avail = _find_earliest_slot(
+                                machine_intervals.get(eqp_id, []),
+                                check_time,
+                                timedelta(minutes=ct))
                     if avail + timedelta(minutes=ct) <= prefix_deadline:
                         _c = _conflicts.get(eqp_id, 0)
                         if (avail < best_start) or (avail == best_start and best_eqp is not None
@@ -2089,23 +2250,34 @@ def _try_schedule_chain_forward(
         else:
             _conflicts = _eqp_conflict_scores(eqp_ids, lot, lot_state, qtime_by_product, flow_map)
             for eqp_id in eqp_ids:
-                if eqp_id in special_eqp_map:
-                    can_use, adj_time = _check_special_eqp_available(
-                        eqp_id, lot.qty, ready_time, ct,
-                        special_eqp_map, eqp_batch_state, machine_intervals)
+                if eqp_id in special_eqp_map and special_eqp_map[eqp_id].together:
+                    # 恒组批（together=true）：批次统一槽位（等待凑批/加入已开批次）
+                    can_use, adj_time = _compute_batch_slot(
+                        eqp_id, lot, step, ct, ready_time, special_eqp_map[eqp_id],
+                        lot_state, special_lot_step_lookup, ct_lookup,
+                        eqp_batch_state, priority_wait_map,
+                        cur_time=cur_time)
                     if not can_use:
                         continue
-                    ready_time = max(ready_time, adj_time)
-                if _is_parallel_eqp(eqp_id, special_eqp_map):
-                    # 并行型特殊设备（together=false）：到点即入，不需互斥排他（容量限制已由
-                    # _check_special_eqp_available 校验），直接以就绪时刻为开始时间，避免被
-                    # machine_intervals 里并行 Lot 的占用区间串行化。
-                    avail = ready_time
+                    avail = adj_time
                 else:
-                    avail = _find_earliest_slot(
-                        machine_intervals.get(eqp_id, []),
-                        ready_time,
-                        timedelta(minutes=ct))
+                    if eqp_id in special_eqp_map:
+                        can_use, adj_time = _check_special_eqp_available(
+                            eqp_id, lot.qty, ready_time, ct,
+                            special_eqp_map, eqp_batch_state, machine_intervals)
+                        if not can_use:
+                            continue
+                        ready_time = max(ready_time, adj_time)
+                    if _is_parallel_eqp(eqp_id, special_eqp_map):
+                        # 并行型特殊设备（together=false）：到点即入，不需互斥排他（容量限制已由
+                        # _check_special_eqp_available 校验），直接以就绪时刻为开始时间，避免被
+                        # machine_intervals 里并行 Lot 的占用区间串行化。
+                        avail = ready_time
+                    else:
+                        avail = _find_earliest_slot(
+                            machine_intervals.get(eqp_id, []),
+                            ready_time,
+                            timedelta(minutes=ct))
                 _c = _conflicts.get(eqp_id, 0)
                 if (avail < best_start) or (avail == best_start and best_eqp is not None
                                             and _c < _conflicts.get(best_eqp, 0)):
@@ -3403,6 +3575,22 @@ def schedule(
             for eqp_id in eqp_ids:
                 # 特殊设备检查
                 ready = state["ready_time"]
+                if eqp_id in special_eqp_map and special_eqp_map[eqp_id].together:
+                    # 恒组批（together=true）：批次统一槽位（等待凑批/加入已开批次）
+                    can_use, adj_time = _compute_batch_slot(
+                        eqp_id, lot, step, ct, ready, special_eqp_map[eqp_id],
+                        lot_state, special_lot_step_lookup, ct_lookup,
+                        eqp_batch_state, priority_wait_map,
+                        cur_time=current_time)
+                    if not can_use:
+                        continue
+                    avail = adj_time
+                    _c = _conflicts.get(eqp_id, 0)
+                    if (avail < best_start) or (avail == best_start and best_eqp is not None
+                                                and _c < _conflicts.get(best_eqp, 0)):
+                        best_start = avail
+                        best_eqp = eqp_id
+                    continue
                 if eqp_id in special_eqp_map:
                     can_use, adj_time = _check_special_eqp_available(
                         eqp_id, lot.qty, ready, ct,
