@@ -235,7 +235,8 @@ def schedule_optimized(
             if best_violating is None or len(errors) < best_violating_count:
                 best_violating = (le, ee, qa)
                 best_violating_count = len(errors)
-                best_violating_meta = {"iter": it, "errors": list(errors)}
+                best_violating_meta = {"iter": it, "errors": list(errors),
+                                       "schedule_warnings": list(iter_warnings)}
 
         # 自适应早停：已得合法解后连续 N 轮无改进则提前终止（0=关闭）
         if (early_stop_patience > 0 and best is not None
@@ -465,7 +466,7 @@ def schedule_optimized(
             "total_iterations": iters_done,
             "warning": "未找到完全合法解，已返回违规最少的解",
             "violations": (best_violating_meta or {}).get("errors", []),
-            "schedule_warnings": [],
+            "schedule_warnings": list((best_violating_meta or {}).get("schedule_warnings", [])),
             "seed": seed,
         }
     else:

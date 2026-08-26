@@ -1424,6 +1424,7 @@ def _precompute_whole_chain_block(
     chain_first_ready: Optional[datetime] = None,
     now: Optional[datetime] = None,
     ref_release_forecast: Optional[dict] = None,
+    cycle_forecast_keys: Optional[set] = None,
 ) -> Optional[dict]:
     """整链块调度（借鉴 scheduler_before1 方法 B）：对无 reference 阻塞的 Q-time 链，
     把整条链作为一块整体，做"从链尾倒排 + 整链后移重试"迭代：
@@ -1489,9 +1490,13 @@ def _precompute_whole_chain_block(
         # reference 释放下限
         for rk, bi in (ref_block_info or {}).items():
             if bi is not None and steps[0][0] <= bi <= _i:
-                # ref_release_times 是 {lot_name: {ref_key: 释放时刻}} 分层结构，
-                # 必须以本 lot 名为第一层键查找，否则永远取不到已释放时刻（曾导致整链
-                # 块调度无视 reference 下界锚点、把被约束步骤排到释放时刻之前）。
+                # 环内"预测释放"的 reference（互相等待无确切顺序）：整链块反向放置
+                # 会把"链尾锚点在次日、中间步被 ref 钉在当日"的跨天松链（如 FTF 链）
+                # 通过整链后移推到更晚（max_gap 无限累计）——实测 MOUNT 被推到次日。
+                # 预测释放时间已写入 ref_release_times（单步调度会用 coarse 锚点兜底
+                # 正确等待），此处整链块直接放弃，交回单步/正向逐步骤调度。
+                if cycle_forecast_keys and (lot.lot_name, rk) in cycle_forecast_keys:
+                    return None
                 rel = (ref_release_times.get(lot.lot_name, {}).get(rk, FAR_FUTURE)
                        if ref_release_times else FAR_FUTURE)
                 # 尚未释放但有第一遍预测释放时刻：用预测锚点，让整链块提前紧凑锚定，
@@ -1759,6 +1764,7 @@ def _try_schedule_chain_forward(
     chain_placement: str = "compact",
     ref_release_forecast: dict = None,
     cur_time: Optional[datetime] = None,
+    cycle_forecast_keys: Optional[set] = None,
 ) -> tuple[bool, int]:
     """尝试从前往后调度一个 Q-time 链段。
     如果遇到 reference 阻塞或设备不可用，则拆链：
@@ -2159,7 +2165,8 @@ def _try_schedule_chain_forward(
             manual_adjust_lookup, priority_wait_map,
             ref_release_times, pending_refs.get(lot.lot_name, set()), ref_block_info,
             state.get("coarse_anchors", []), resolve_max_iterations,
-            _first_ready, ref_release_forecast=ref_release_forecast)
+            _first_ready, ref_release_forecast=ref_release_forecast,
+            cycle_forecast_keys=cycle_forecast_keys)
 
     # ---- 紧链整链块失败：不可回退单步（会散开超 Q），延迟 ready_time 重试 ----
     # 整链块调度失败说明当前时间点设备/约束不足以把整条链紧凑放下。若回退单步贪婪，
@@ -2848,6 +2855,26 @@ def _detect_schedule_anomalies(
         lot_entries.setdefault(e.lot_name, []).append(e)
 
     lot_by_name = {l.lot_name: l for l in lots}
+
+    # ---- 3.0 引用步骤在源流程中不存在（数据错误 → 引用永不释放 → 必然死锁） ----
+    _missing_ref_steps: list[str] = []
+    for _lot in lots:
+        for _r in _lot.references or []:
+            if not (_r.reference_lot and _r.reference_step):
+                continue
+            _src_lot = lot_by_name.get(_r.reference_lot)
+            _src_flow = flow_map.get(_src_lot.product_name) if _src_lot else None
+            if not (_src_lot and _src_flow):
+                continue
+            try:
+                get_step_index_in_flow(_src_flow, _r.reference_step)
+            except ValueError:
+                _missing_ref_steps.append(
+                    f"{_lot.lot_name} 引用了 {_r.reference_lot} 的步骤 "
+                    f"{_r.reference_step}，但该步骤在 {_src_lot.product_name} 流程中不存在——"
+                    "该引用永远不会释放，相关 lot 将被永久阻塞")
+    if _missing_ref_steps:
+        warnings.append("引用配置错误：" + "；".join(_missing_ref_steps[:3]))
     for ln, entries in lot_entries.items():
         lot = lot_by_name.get(ln)
         if lot is None:
@@ -3377,6 +3404,57 @@ def schedule(
         priority_wait_map or {}, schedule_start, qtimes,
         manual_adjusts=manual_adjusts)
 
+    # ---- 引用环内的 reference 预测释放 ----
+    # 环内 lot 互相等待（A 等 B 完成、B 又等 A 完成）时，贪婪排程阶段无法得到
+    # "确切的释放顺序"：源 lot 自己也卡在等待里，release 永远是 FAR_FUTURE →
+    # 所有未完成 lot 互相阻塞 → 死锁、后续步骤全部缺失。
+    # 用粗排锚点（自然就绪时刻，已由 _coarse_earliest_anchors 的雪崩回退打破环）
+    # 预测释放时间：预测 = 源 lot 该步骤锚点 + CT。预填后本 lot 到该步时
+    # ready_time = max(自然就绪, 预测)，不再硬阻塞；源 lot 真实完成时
+    # _release_refs_for_step 会以真实完成时间覆盖（_update_blocked_ready_time
+    # 取 max，真实更晚则自动修正）。
+    _cycle_forecast: dict[tuple[str, tuple[str, str]], datetime] = {}
+    _cycle_forecast_keys: set = set()
+    _cycle_lots_now = set(_anchor_audit.get("cycle_lots") or ())
+    # 仅当粗排程 60 轮未收敛（真·循环引用、已触发自然锚点回退）时才启用预测释放：
+    # 收敛的环（IOU1↔IOU1-f、PC↔real）真实释放会正常到来，预测反而可能偏早/偏晚，
+    # 干扰设备占用导致 Q-time 超时（PC↔real 强制延迟实测 2→7 错误）；只有真·环
+    # （A.FTF 等 B.FTF 完成、B.FTF 又等 A.FTF 完成）真实释放永远不会到来，才需要
+    # 用"自然就绪时刻"预测打破互相阻塞死锁。
+    if _cycle_lots_now and _anchor_audit.get("fallback_used"):
+        lot_by_name = {l.lot_name: l for l in lots}
+        for _lot in lots:
+            _pf = flow_map.get(_lot.product_name)
+            if not _pf:
+                continue
+            try:
+                _lot_cur = get_step_index_in_flow(_pf, _lot.current_step_name)
+            except ValueError:
+                _lot_cur = 0
+            for _r in _lot.references or []:
+                if not (_r.reference_lot and _r.start_step):
+                    continue
+                if _r.reference_lot not in _cycle_lots_now:
+                    continue  # 源在环外：真实释放会正常到来，无需预测
+                _src_lot = lot_by_name.get(_r.reference_lot)
+                _src_flow = flow_map.get(_src_lot.product_name) if _src_lot else None
+                if not (_src_lot and _src_flow):
+                    continue
+                try:
+                    _src_step_idx = get_step_index_in_flow(_src_flow, _r.reference_step or "")
+                    _src_cur = get_step_index_in_flow(_src_flow, _src_lot.current_step_name)
+                except ValueError:
+                    continue
+                _rel = _src_step_idx - _src_cur
+                if _rel < 0 or _rel >= len(coarse_anchors.get(_r.reference_lot, [])):
+                    continue
+                _anchor_t = coarse_anchors[_r.reference_lot][_rel]
+                _ct = get_step_ct(ct_lookup, _src_flow[_src_step_idx].product_name,
+                                  _src_flow[_src_step_idx].step_number, _src_lot.qty)
+                _cycle_forecast[(_lot.lot_name, (_r.reference_lot, _r.reference_step or ""))] = \
+                    _anchor_t + timedelta(minutes=_ct)
+                _cycle_forecast_keys.add((_lot.lot_name, (_r.reference_lot, _r.reference_step or "")))
+
     for lot in lots:
         product_flow = flow_map.get(lot.product_name)
         current_idx = get_step_index_in_flow(product_flow, lot.current_step_name)
@@ -3408,7 +3486,20 @@ def schedule(
                 ref_block_info.get((r.reference_lot, r.reference_step or "")) == 0
                 for r in active_refs)
             if first_blocked:
-                ready_time = FAR_FUTURE
+                # 首步即被引用阻塞：若该引用在环内已有预测释放，用
+                # max(自然就绪, 预测释放) 作为 ready_time（不硬阻塞，避免死锁）；
+                # 否则置 FAR_FUTURE 等待真实释放。
+                _blocked_keys = [
+                    (r.reference_lot, r.reference_step or "")
+                    for r in active_refs
+                    if ref_block_info.get((r.reference_lot, r.reference_step or "")) == 0]
+                _blocked_fc = [
+                    _cycle_forecast[(lot.lot_name, k)] for k in _blocked_keys
+                    if (lot.lot_name, k) in _cycle_forecast]
+                if _blocked_fc and len(_blocked_fc) == len(_blocked_keys):
+                    ready_time = max([ready_time] + _blocked_fc)
+                else:
+                    ready_time = FAR_FUTURE
 
             pending_refs[lot.lot_name] = set()
             ref_release_times[lot.lot_name] = {}
@@ -3416,6 +3507,11 @@ def schedule(
                 ref_key = (ref.reference_lot, ref.reference_step or "")
                 pending_refs[lot.lot_name].add(ref_key)
                 reference_deps.setdefault(ref_key, []).append(lot.lot_name)
+                # 环内预测释放：预先视为已释放，避免互相等待死锁
+                fc = _cycle_forecast.get((lot.lot_name, ref_key))
+                if fc is not None:
+                    ref_release_times[lot.lot_name][ref_key] = fc
+                    pending_refs[lot.lot_name].discard(ref_key)
 
         # FTF qty 变化
         ftf_rule = None
@@ -3701,6 +3797,7 @@ def schedule(
                 chain_placement,  # 链放置策略
                 state.get("ref_release_forecast"),  # 第一遍预测锚点
                 current_time,  # 真实推进时间（恒组批 busy_until 判定用）
+                _cycle_forecast_keys,  # 环内预测释放的 ref key 集合
             )
             if chain_scheduled or state.get("chain_reverse_pending"):
                 current_time = max(current_time, lot_entries[-1].end_time if lot_entries else current_time)
