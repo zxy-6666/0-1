@@ -8,9 +8,11 @@ Attribute VB_Name = "营收报表宏"
 '
 ' 使用步骤：
 '   1. 把本文件导入：Alt+F11 -> 文件 -> 导入文件
-'   2. 维护数据表：4/5/6/8/9/10（9号表把数据库数据整列粘贴）
-'   3. 运行【刷新报表】生成 1/2/3 表
-'   4. 跨月：运行【新建月份】，输入如 2026-09，先把当前 1/2/3 表复制成带月份副本存档
+'   2. 维护数据表：0.配置（数据库连接参数/字段映射）、4/5/6/8/10
+'   3. 运行【从数据库刷新】：连 PostgreSQL 拉取 sdi_mes.sdi_th_wip_lot_transaction
+'      写入 9.入料、出货原始数据 并自动刷新报表（需本机装 PostgreSQL ODBC 驱动）
+'   4. 或手工把数据粘贴到 9 号表后运行【刷新报表】
+'   5. 跨月：运行【新建月份】，输入如 2026-09，先把当前 1/2/3 表复制成带月份副本存档
 '      再补日期列并刷新到新月份（原月数据保留为 1.汇总_2026-08 等）
 '
 ' 约定：
@@ -23,6 +25,7 @@ Attribute VB_Name = "营收报表宏"
 '=============================================================
 Option Explicit
 
+Private Const S_CONFIG As String = "0.配置"
 Private Const S_SUMMARY As String = "1.汇总"
 Private Const S_RECV As String = "2.入料"
 Private Const S_SHIP As String = "3.出货"
@@ -54,6 +57,185 @@ Private dictShipQty As Object   ' product|day -> 出货量
 '=============================================================
 Public Sub 刷新报表()
     RefreshCore 0
+End Sub
+
+'=============================================================
+' 主宏2：从数据库刷新（ODBC 直连 PostgreSQL）
+'   0.配置 表维护连接参数/拉取范围/字段映射
+'   流程：连库 -> 拉 sdi_mes.sdi_th_wip_lot_transaction
+'        -> 写入 9.入料、出货原始数据 -> 自动刷新报表
+'=============================================================
+Public Sub 从数据库刷新()
+    On Error GoTo ErrH
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+
+    Dim wb As Workbook
+    Set wb = ThisWorkbook
+    Dim wsCfg As Worksheet
+    Dim wsRaw As Worksheet
+    On Error Resume Next
+    Set wsCfg = wb.Sheets(S_CONFIG)
+    Set wsRaw = wb.Sheets(S_RAW)
+    On Error GoTo 0
+    If wsCfg Is Nothing Then
+        MsgBox "找不到工作表「0.配置」，请先创建（含 数据库连接配置 / 字段映射 两区）。", vbExclamation
+        GoTo Cleanup
+    End If
+    If wsRaw Is Nothing Then
+        MsgBox "找不到工作表「9.入料、出货原始数据」。", vbExclamation
+        GoTo Cleanup
+    End If
+
+    ' 1. 读连接参数
+    Dim host As String, port As String, db As String, usr As String, pwd As String
+    Dim drv As String, sch As String, tbl As String
+    host = CfgVal(wsCfg, "host"): port = CfgVal(wsCfg, "port")
+    db = CfgVal(wsCfg, "database"): usr = CfgVal(wsCfg, "user")
+    pwd = CfgVal(wsCfg, "password"): drv = CfgVal(wsCfg, "driver")
+    sch = CfgVal(wsCfg, "schema"): tbl = CfgVal(wsCfg, "table")
+    If host = "" Or db = "" Then
+        MsgBox "0.配置 中的 host/database 不能为空。", vbExclamation
+        GoTo Cleanup
+    End If
+    If drv = "" Then drv = "PostgreSQL Unicode"
+    If sch = "" Then sch = "sdi_mes"
+    If tbl = "" Then tbl = "sdi_th_wip_lot_transaction"
+    If port = "" Then port = "5432"
+
+    ' 2. 拉取日期范围（留空=汇总表A1月份整月）
+    Dim d1 As Date, d2 As Date
+    Dim s1 As String, s2 As String
+    s1 = CfgVal(wsCfg, "开始日期"): s2 = CfgVal(wsCfg, "结束日期")
+    If IsDate(s1) Then
+        d1 = CDate(s1)
+    Else
+        d1 = MonthStartFromSummary(wb)
+    End If
+    If IsDate(s2) Then
+        d2 = CDate(s2)
+    Else
+        d2 = DateSerial(Year(d1), Month(d1) + 1, 0)
+    End If
+
+    ' 3. 读字段映射（9号表字段 -> 数据库字段）
+    Dim map As Object
+    Set map = CreateObject("Scripting.Dictionary")
+    Dim rd As Long, hdrCol As Long, dbCol As Long, maxR As Long, c As Long
+    ' 定位"字段映射"标题行
+    hdrCol = 0: dbCol = 0
+    maxR = wsCfg.Cells(wsCfg.Rows.Count, 1).End(xlUp).Row
+    Dim startRow As Long
+    startRow = 0
+    Dim r0 As Long
+    For r0 = 1 To maxR
+        If Trim(CStr(wsCfg.Cells(r0, 1).Value)) = "字段映射" Then startRow = r0: Exit For
+    Next r0
+    If startRow = 0 Then
+        MsgBox "0.配置 缺少「字段映射」区（首列单元格写“字段映射”）。", vbExclamation
+        GoTo Cleanup
+    End If
+    For c = 1 To 3
+        If LCase(Trim(CStr(wsCfg.Cells(startRow, c).Value))) = "9号表字段" Then hdrCol = c
+        If LCase(Trim(CStr(wsCfg.Cells(startRow, c).Value))) = "数据库字段" Then dbCol = c
+    Next c
+    If hdrCol = 0 Or dbCol = 0 Then
+        MsgBox "0.配置 字段映射区表头需包含“9号表字段”和“数据库字段”。", vbExclamation
+        GoTo Cleanup
+    End If
+    Dim mR As Long
+    For mR = startRow + 1 To maxR
+        Dim f9 As String, fdb As String
+        f9 = Trim(CStr(wsCfg.Cells(mR, hdrCol).Value))
+        fdb = Trim(CStr(wsCfg.Cells(mR, dbCol).Value))
+        If f9 <> "" And fdb <> "" Then map(f9) = fdb
+    Next mR
+    If map.Count = 0 Then
+        MsgBox "字段映射为空，无法构造查询。", vbExclamation
+        GoTo Cleanup
+    End If
+
+    ' 4. 构造 SELECT（列顺序 = 9号表固定表头顺序）
+    Dim head As Variant
+    head = Array("lot_name", "lot_type", "component_qty", "product_name", "step_name", "last_updated_time", "activity")
+    Dim cols As String
+    Dim i As Long
+    cols = ""
+    For i = 0 To UBound(head)
+        If map.Exists(head(i)) Then
+            If cols <> "" Then cols = cols & ", "
+            cols = cols & QuoteIdent(map(head(i)))
+        End If
+    Next i
+    If cols = "" Then
+        MsgBox "字段映射没有可用列。", vbExclamation
+        GoTo Cleanup
+    End If
+    Dim sql As String
+    sql = "SELECT " & cols & " FROM " & sch & "." & tbl _
+        & " WHERE last_updated_time >= '" & Format(d1, "yyyy-mm-dd") & " 00:00:00'" _
+        & " AND last_updated_time <= '" & Format(d2, "yyyy-mm-dd") & " 23:59:59'"
+
+    ' 5. 连接 + 执行 + 写 9 号表
+    Dim conn As Object
+    Set conn = CreateObject("ADODB.Connection")
+    conn.ConnectionTimeout = 15
+    conn.Open "Driver={" & drv & "};Server=" & host & ";Port=" & port & ";Database=" & db & ";Uid=" & usr & ";Pwd=" & pwd
+    Dim rs As Object
+    Set rs = conn.Execute(sql)
+
+    ' 清空 9 号表旧数据（保留表头）
+    Dim lastRow As Long
+    lastRow = wsRaw.Cells(wsRaw.Rows.Count, 1).End(xlUp).Row
+    If lastRow > 1 Then wsRaw.Rows("2:" & lastRow).ClearContents
+
+    ' 写表头（只写有映射的列）
+    Dim hh As Variant
+    hh = Array("lot_name", "lot_type", "component_qty", "product_name", "step_name", "last_updated_time", "activity")
+    Dim hc As Long
+    For hc = 0 To UBound(hh)
+        wsRaw.Cells(1, hc + 1).Value = hh(hc)
+    Next hc
+
+    Dim nRows As Long
+    nRows = 0
+    If Not rs.EOF Then
+        wsRaw.Range("A2").CopyFromRecordset rs
+        nRows = wsRaw.Cells(wsRaw.Rows.Count, 1).End(xlUp).Row - 1
+    End If
+    rs.Close
+    conn.Close
+    Set rs = Nothing
+    Set conn = Nothing
+
+    ' 6. 校验必需列
+    Dim need As Variant
+    need = Array("product_name", "component_qty", "last_updated_time", "activity")
+    Dim msg As String
+    msg = ""
+    For i = 0 To UBound(need)
+        If Not map.Exists(need(i)) Then msg = msg & "  " & need(i) & vbCrLf
+    Next i
+    MsgBox "已从数据库拉取 " & nRows & " 行写入「9.入料、出货原始数据」。" & vbCrLf & vbCrLf & _
+           "缺少以下必需字段映射（会影响筛选匹配）：" & vbCrLf & IIf(msg = "", "  (无)", msg), vbInformation
+
+    ' 7. 自动刷新报表
+    RefreshCore 0
+
+Cleanup:
+    Application.ScreenUpdating = True
+    Application.EnableEvents = True
+    Exit Sub
+ErrH:
+    Dim em As String
+    em = Err.Description
+    If InStr(em, "Data source name") > 0 Or InStr(em, "未找到数据源") > 0 Then
+        MsgBox "未找到 ODBC 驱动：" & drv & vbCrLf & vbCrLf & _
+               "请安装 PostgreSQL ODBC 驱动（psqlODBC），安装后控制面板->ODBC 数据源中应能看到 “PostgreSQL Unicode”。", vbCritical
+    Else
+        MsgBox "数据库刷新失败：" & em, vbCritical
+    End If
+    Resume Cleanup
 End Sub
 
 '=============================================================
@@ -1129,3 +1311,37 @@ Private Sub ArchiveSheet(wb As Workbook, ByVal srcName As String, ByVal tag As S
     src.Copy After:=wb.Sheets(wb.Sheets.Count)
     wb.Sheets(wb.Sheets.Count).Name = newName
 End Sub
+
+'=============================================================
+' 辅助：从 0.配置 读取参数值（第1列为参数名，第2列为值）
+'=============================================================
+Private Function CfgVal(wsCfg As Worksheet, ByVal key As String) As String
+    Dim lastR As Long, r As Long
+    lastR = wsCfg.Cells(wsCfg.Rows.Count, 1).End(xlUp).Row
+    For r = 1 To lastR
+        If LCase(Trim(CStr(wsCfg.Cells(r, 1).Value))) = LCase(key) Then
+            CfgVal = Trim(CStr(wsCfg.Cells(r, 2).Value))
+            Exit Function
+        End If
+    Next r
+End Function
+
+'=============================================================
+' 辅助：标识符加双引号（防列名含特殊字符）
+'=============================================================
+Private Function QuoteIdent(ByVal s As String) As String
+    QuoteIdent = """" & Replace(s, """", """""") & """"
+End Function
+
+'=============================================================
+' 辅助：汇总表A1月份 -> 该月首日（A1无日期时取当月1日）
+'=============================================================
+Private Function MonthStartFromSummary(wb As Workbook) As Date
+    Dim wsSum As Worksheet
+    Set wsSum = wb.Sheets(S_SUMMARY)
+    If IsDate(wsSum.Range("A1").Value) Then
+        MonthStartFromSummary = DateSerial(Year(CDate(wsSum.Range("A1").Value)), Month(CDate(wsSum.Range("A1").Value)), 1)
+    Else
+        MonthStartFromSummary = DateSerial(Year(Date), Month(Date), 1)
+    End If
+End Function
