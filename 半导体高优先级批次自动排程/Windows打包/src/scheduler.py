@@ -1180,6 +1180,7 @@ def _compute_batch_slot(
     cur_time: Optional[datetime] = None,
     machine_intervals: Optional[dict] = None,
     special_eqp_map: Optional[dict] = None,
+    lot_entries: Optional[list] = None,
 ):
     """恒组批（together=true）批次槽位：计算当前 Lot 在"批次步骤"（如 CURE）的槽位。
 
@@ -1308,16 +1309,31 @@ def _compute_batch_slot(
                     other_eqp_ids = list(sls.special_eqp)
         if eqp_id not in other_eqp_ids:
             continue
-        # 估算该 Lot 到达目标步骤的时间。先做纯 CT+wait 累积（乐观下界）；
-        # 再做设备感知累积（更贴近真实）。若中间某一步的设备槽位查询在排程窗口内
-        # 找不到可用槽（返回 datetime.max），说明设备快照此刻的竞争信息不可靠/该链
-        # 尚未推进（如 PC2 中间 PLASMA 找不到槽），此时不能拿 datetime.max 污染预估、
-        # 把实际已就绪的成员（如 PC2 的 CURE 就绪 10:18）错误排除——退回到纯 CT 累积。
+        # 估算该 Lot 到达目标步骤的时间。三路估计：
+        #   1) est_act：沿中间步骤查询 lot_entries 中【已经排定的实际完成时刻】做锚点，
+        #      命中则用真实完成时刻（精确度最高），未命中才退化为 wait+CT 累积。这是
+        #      本轮 Fix1 的核心：不再纯靠估算，优先用"已排设备占用"回溯真实到达。
+        #   2) est_net：纯 CT+wait 累积（乐观下界）。
+        #   3) est_dev：设备感知累积（更贴近真实）。若中间某一步的设备槽位查询在排程窗口内
+        #      找不到可用槽（返回 datetime.max），说明设备快照此刻的竞争信息不可靠/该链
+        #      尚未推进（如 PC2 中间 PLASMA 找不到槽），此时不能拿 datetime.max 污染预估、
+        #      把实际已就绪的成员（如 PC2 的 CURE 就绪 10:18）错误排除。
+        _mem_entries = ({e.step_name: e for e in lot_entries}
+                        if lot_entries else {})
         est_net = other_state["ready_time"]
+        est_act = other_state["ready_time"]
+        _act_anchor_used = False
         for _s in other_remaining[other_idx:target_idx]:
             _sct = get_step_ct(ct_lookup, _s.product_name, _s.step_number, other_lot.qty)
             _swait = get_step_wait_time(other_lot.priority[0], other_lot.priority[1], priority_wait_map)
             est_net += timedelta(minutes=_swait + _sct)
+            # 已排定的中间步骤：用真实完成时刻作为锚点，替代估（精确度高）。
+            _e = _mem_entries.get(_s.step_name) if lot_entries else None
+            if _e is not None:
+                est_act = _e.end_time
+                _act_anchor_used = True
+            else:
+                est_act += timedelta(minutes=_swait + _sct)
         est_dev = other_state["ready_time"]
         _dev_ok = True
         for _s in other_remaining[other_idx:target_idx]:
@@ -1341,12 +1357,22 @@ def _compute_batch_slot(
                     break  # 设备快照不可信：退回纯 CT 累积
                 est_dev = _est_free
             est_dev += timedelta(minutes=_sct)
-        # 两种估计都晚于窗口才排除（任一成立即可并入）
-        if est_net > open_time + timedelta(minutes=wait_window) and est_dev > open_time + timedelta(minutes=wait_window):
+        # 三种估计都晚于窗口才排除（任一成立即可并入）。est_act 用真实完成时刻锚点，
+        # 是三者中最可信的；est_net 为乐观下界；est_dev 为设备感知上界。
+        if (est_net > open_time + timedelta(minutes=wait_window)
+                and est_dev > open_time + timedelta(minutes=wait_window)
+                and est_act > open_time + timedelta(minutes=wait_window)):
             continue
-        # 成员到达时间：优先设备感知（真实竞争），设备快照不可信时退回纯 CT 下界。
-        # 注意 est_dev 可能已含 datetime.max 污染（break 后未完成的累积），以 est_net 兜底。
-        est = est_dev if (_dev_ok and est_dev < datetime.max) else est_net
+        # 成员到达时间：优先用含真实完成锚点的 est_act；否则设备感知（真实竞争），
+        # 设备快照不可信时退回纯 CT 下界。注意 est_dev 可能已含 datetime.max 污染
+        # （break 后未完成的累积），以 est_net 兜底。
+        _maxv = datetime.max
+        if _act_anchor_used and est_act < _maxv:
+            est = est_act
+        elif _dev_ok and est_dev < _maxv:
+            est = est_dev
+        else:
+            est = est_net
         # 成员目标步骤的粗排程锚点（含引用/Q-time 约束，ref-aware）若远超窗口，
         # 说明其"实际到达"无法在窗口内兑现（如被引用阻塞推到次日）——不得并入，
         # 否则批次为该成员空等、把本 lot 的 Q-time 拉爆（PC2 的 CURE 锚点被 real2
@@ -2063,7 +2089,8 @@ def _try_schedule_chain_forward(
                             eqp_id, lot, step, ct, ready_time, special_eqp_map[eqp_id],
                             lot_state, special_lot_step_lookup, ct_lookup,
                             eqp_batch_state, priority_wait_map,
-                            cur_time=cur_time, machine_intervals=machine_intervals, special_eqp_map=special_eqp_map)
+                            cur_time=cur_time, machine_intervals=machine_intervals, special_eqp_map=special_eqp_map,
+                            lot_entries=lot_entries)
                         if not can_use:
                             continue
                         check_time = adj_time
@@ -2366,7 +2393,8 @@ def _try_schedule_chain_forward(
                         eqp_id, lot, step, ct, ready_time, special_eqp_map[eqp_id],
                         lot_state, special_lot_step_lookup, ct_lookup,
                         eqp_batch_state, priority_wait_map,
-                        cur_time=cur_time, machine_intervals=machine_intervals, special_eqp_map=special_eqp_map)
+                        cur_time=cur_time, machine_intervals=machine_intervals, special_eqp_map=special_eqp_map,
+                        lot_entries=lot_entries)
                     if not can_use:
                         continue
                     avail = adj_time
@@ -2513,6 +2541,7 @@ def _coarse_earliest_anchors(
     schedule_start: datetime,
     qtimes: list = None,
     manual_adjusts: list = None,
+    eqp_constraints: list = None,
 ) -> dict[str, list[datetime]]:
     """粗排程第一遍：忽略设备竞争，只按 constraints 计算每个 lot 每个 step 的
     "最早可行开始时间"锚点。
@@ -2525,12 +2554,33 @@ def _coarse_earliest_anchors(
       保证整条链紧凑（不因链首过早排而拉长 Q-time）。
     - 手动延迟：手动延后的 step 作为该 step 及之后步骤的硬性最早锚点，
       再沿 reference 网级联传播给相互引用的 lot（保证跨 lot 链整体平移）。
+    - 设备停机窗（eqp_constraints，Fix2）：步骤所用设备若在预估开始时处于停机窗
+      （如 PKCON/PKFCV 22:00-08:30），把该步及其后步骤整体推到窗口结束之后，
+      使粗排锚点与实际设备可用时间对齐。
 
     返回 {lot_name: [每个 remaining step 的最早开始时间]}
     """
     from data_loader import get_step_index_in_flow
     anchors: dict[str, list[datetime]] = {}
     lot_by_name = {l.lot_name: l for l in lots}
+
+    # 设备停机窗：{eqp: [(start,end)]}，用于把落在停机窗的步骤锚点推到窗口结束之后
+    down_map = _expand_eqp_constraints(eqp_constraints or [], schedule_start)
+
+    def _resolve_eqp_downtime(_eqps: list, _t: datetime) -> datetime:
+        """若 _t 落在任一可用设备的停机窗内，推到窗口结束；返回最早的合法开始时刻。"""
+        if _eqps == ["-"]:
+            return _t
+        low = _t
+        while True:
+            blocked = False
+            for _eid in _eqps:
+                for _ws, _we in down_map.get(_eid, []):
+                    if _ws <= low < _we:
+                        low = _we
+                        blocked = True
+            if not blocked:
+                return low
 
     # 手动延迟锚：{(lot, step): delay_to}
     manual_delay_map: dict[tuple[str, str], datetime] = {}
@@ -2573,6 +2623,18 @@ def _coarse_earliest_anchors(
             if i == 0 and lot.running_time:
                 eff = _effective_running_ct(ct_lookup, special_lot_step_lookup, lot, s)
                 ct = max(0.0, ct - eff)
+            # Fix2：设备停机窗。若步骤预估开始时刻落在其设备的停机窗内，推到窗口结束，
+            # 使粗排锚点与实际设备可用时间对齐（如 PKCON/PKFCV 22:00-08:30 停机，
+            # 落到当晚的步骤被推到次日 08:30，real1.BAKE 锚点≈实际）。
+            if down_map:
+                _eqps = list(getattr(s, "eqp_ids") or ["-"]) if getattr(s, "eqp_ids", None) else ["-"]
+                if special_lot_step_lookup:
+                    _sls_key = (lot.lot_name, s.step_name)
+                    _sls = special_lot_step_lookup.get(_sls_key)
+                    if _sls is not None and _sls.special_eqp:
+                        _eqps = list(_sls.special_eqp)
+                if _eqps != ["-"]:
+                    t = _resolve_eqp_downtime(_eqps, t)
             lst.append(t)
             # 链内步间等待受 Q-time 预算限制（避免把链拉长到超 Q）
             wait = get_step_wait_time(lot.priority[0], lot.priority[1], priority_wait_map)
@@ -3366,17 +3428,105 @@ def schedule(
     special_eqp_map: Optional[dict[str, SpecialEqp]] = None,
     resolve_max_iterations: int = 10,
     verbose: bool = False,
-    # ---- GA 优化器用参数 ----
     lot_order: Optional[list[str]] = None,
     eqp_preferences: Optional[dict[tuple[str, str], list[str]]] = None,
     chain_placement: str = "compact",
     ref_release_forecast: Optional[dict] = None,
-    # ---- 算法旋钮（None 使用模块默认常量） ----
     tight_chain_threshold: Optional[int] = None,
     qtight_safety_margin: Optional[int] = None,
     chain_wait_safety: Optional[int] = None,
-    # ---- 合理性告警输出（可选）：调用方传入 list，排程结束后把智能检测到的
-    #      不合理情形（引用环/雪崩回退/异常等待间隙）追加进去 ----
+    out_warnings: Optional[list] = None,
+) -> tuple[list[ScheduleEntry], list[EqpScheduleEntry], list[QTimeAlert]]:
+    """两遍排程（Fix3）：把"第一遍实际释放时刻"回喂第二遍作为预测锚点。
+
+    第一遍不带预测跑出真实排程，从中提取各个 reference 键的实际释放时刻
+    （_collect_ref_release_forecast），作为第二遍的 ref_release_forecast 传入，
+    使等待中、尚未在第二遍里实际释放的 reference 也能以真实释放锚点提前紧凑放置
+    整链块，避免链首因缺锚而过早调度、拖垮整链 Q-time。
+
+    若调用方已显式传入 ref_release_forecast，则以调用方的为准（更高优先级）。
+    第二遍在深拷贝的 lots 上运行，避免第一遍 FTF 数量变换把 qty 二次放大。
+    """
+    import copy as _copy
+    # 保留调用方 lots 的原始快照，供第二遍使用（第一遍可能在 FTF 步骤改动 lot.qty）
+    _orig_lots = _copy.deepcopy(lots)
+    # 第一遍：不带预测，跑出真实释放时刻
+    _le1, _ee1, _qa1 = _run_schedule_pass(
+        lots, flows, ct_lookup, qtimes, shift_times,
+        ftf_qty_change=ftf_qty_change,
+        special_lot_step_lookup=special_lot_step_lookup,
+        priority_wait_map=priority_wait_map,
+        eqp_constraints=eqp_constraints,
+        step_time_window_constraints=step_time_window_constraints,
+        shift_change_times=shift_change_times,
+        manual_adjusts=manual_adjusts,
+        special_eqp_map=special_eqp_map,
+        resolve_max_iterations=resolve_max_iterations,
+        verbose=verbose, lot_order=lot_order,
+        eqp_preferences=eqp_preferences,
+        chain_placement=chain_placement,
+        ref_release_forecast=None,
+        tight_chain_threshold=tight_chain_threshold,
+        qtight_safety_margin=qtight_safety_margin,
+        chain_wait_safety=chain_wait_safety,
+        out_warnings=None)
+    _forecast = _collect_ref_release_forecast(_le1, lots, shift_times)
+    if ref_release_forecast:
+        _forecast = {**_forecast, **ref_release_forecast}
+    # 第二遍：携带预测锚点重新排程（用原始快照，深拷贝隔离）
+    _le2, _ee2, _qa2 = _run_schedule_pass(
+        _orig_lots, flows, ct_lookup, qtimes, shift_times,
+        ftf_qty_change=ftf_qty_change,
+        special_lot_step_lookup=special_lot_step_lookup,
+        priority_wait_map=priority_wait_map,
+        eqp_constraints=eqp_constraints,
+        step_time_window_constraints=step_time_window_constraints,
+        shift_change_times=shift_change_times,
+        manual_adjusts=manual_adjusts,
+        special_eqp_map=special_eqp_map,
+        resolve_max_iterations=resolve_max_iterations,
+        verbose=verbose, lot_order=lot_order,
+        eqp_preferences=eqp_preferences,
+        chain_placement=chain_placement,
+        ref_release_forecast=_forecast,
+        tight_chain_threshold=tight_chain_threshold,
+        qtight_safety_margin=qtight_safety_margin,
+        chain_wait_safety=chain_wait_safety,
+        out_warnings=out_warnings)
+    # 两遍都比，取 Q-time 超时更少者；等数时取总超时分钟更少者。保证回喂预测
+    # 的副作用不会把原本更优的第一遍结果劣化（例如优化器反复重排的手动调整场景）。
+    _n1 = len([a for a in _qa1 if a.status != "OK"])
+    _n2 = len([a for a in _qa2 if a.status != "OK"])
+    _o1 = sum(getattr(a, "over_minutes", 0) for a in _qa1 if a.status != "OK")
+    _o2 = sum(getattr(a, "over_minutes", 0) for a in _qa2 if a.status != "OK")
+    if (_n1, _o1) <= (_n2, _o2):
+        return _le1, _ee1, _qa1
+    return _le2, _ee2, _qa2
+
+
+def _run_schedule_pass(
+    lots: list[Lot],
+    flows: list[FlowStep],
+    ct_lookup: dict,
+    qtimes: list[QTimeConstraint],
+    shift_times: list[tuple[int, int]],
+    ftf_qty_change: Optional[dict[str, tuple[int, int, str]]] = None,
+    special_lot_step_lookup: Optional[dict[tuple[str, str], SpecialLotStep]] = None,
+    priority_wait_map: Optional[dict[tuple[int, int], int]] = None,
+    eqp_constraints: Optional[list[EqpConstraint]] = None,
+    step_time_window_constraints: Optional[list[StepTimeWindow]] = None,
+    shift_change_times: Optional[list[ShiftChangeTime]] = None,
+    manual_adjusts: Optional[list[ManualAdjust]] = None,
+    special_eqp_map: Optional[dict[str, SpecialEqp]] = None,
+    resolve_max_iterations: int = 10,
+    verbose: bool = False,
+    lot_order: Optional[list[str]] = None,
+    eqp_preferences: Optional[dict[tuple[str, str], list[str]]] = None,
+    chain_placement: str = "compact",
+    ref_release_forecast: Optional[dict] = None,
+    tight_chain_threshold: Optional[int] = None,
+    qtight_safety_margin: Optional[int] = None,
+    chain_wait_safety: Optional[int] = None,
     out_warnings: Optional[list] = None,
 ) -> tuple[list[ScheduleEntry], list[EqpScheduleEntry], list[QTimeAlert]]:
     """执行启发式排程。
@@ -3532,7 +3682,8 @@ def schedule(
     coarse_anchors = _coarse_earliest_anchors(
         lots, flow_map, ct_lookup, special_lot_step_lookup,
         priority_wait_map or {}, schedule_start, qtimes,
-        manual_adjusts=manual_adjusts)
+        manual_adjusts=manual_adjusts,
+        eqp_constraints=eqp_constraints)
 
     # ---- 引用环内的 reference 预测释放 ----
     # 环内 lot 互相等待（A 等 B 完成、B 又等 A 完成）时，贪婪排程阶段无法得到
@@ -4050,7 +4201,8 @@ def schedule(
                         eqp_id, lot, step, ct, ready, special_eqp_map[eqp_id],
                         lot_state, special_lot_step_lookup, ct_lookup,
                         eqp_batch_state, priority_wait_map,
-                        cur_time=current_time, machine_intervals=machine_intervals, special_eqp_map=special_eqp_map)
+                        cur_time=current_time, machine_intervals=machine_intervals, special_eqp_map=special_eqp_map,
+                        lot_entries=lot_entries)
                     if not can_use:
                         continue
                     avail = adj_time
