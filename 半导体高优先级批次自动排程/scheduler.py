@@ -1308,33 +1308,45 @@ def _compute_batch_slot(
                     other_eqp_ids = list(sls.special_eqp)
         if eqp_id not in other_eqp_ids:
             continue
-        # 估算该 Lot 到达目标步骤的时间（沿 remaining 累加 CT + 步间等待）。
-        # 设备感知：中间步骤按其设备的最早可用槽位推进（而非纯 ready+CT），否则会把
-        # 成员到达时间估得偏早（如 real2 的 DISPENSE 被 PKUFD001 排队 25min、PLASMA 被
-        # 排队 25min，纯 CT 估算的 CURE 到达比实际早 40min），导致批次过早开炉、
-        # 成员迟到错过同批而另等下一炉超 Q。
-        est = other_state["ready_time"]
+        # 估算该 Lot 到达目标步骤的时间。先做纯 CT+wait 累积（乐观下界）；
+        # 再做设备感知累积（更贴近真实）。若中间某一步的设备槽位查询在排程窗口内
+        # 找不到可用槽（返回 datetime.max），说明设备快照此刻的竞争信息不可靠/该链
+        # 尚未推进（如 PC2 中间 PLASMA 找不到槽），此时不能拿 datetime.max 污染预估、
+        # 把实际已就绪的成员（如 PC2 的 CURE 就绪 10:18）错误排除——退回到纯 CT 累积。
+        est_net = other_state["ready_time"]
         for _s in other_remaining[other_idx:target_idx]:
             _sct = get_step_ct(ct_lookup, _s.product_name, _s.step_number, other_lot.qty)
             _swait = get_step_wait_time(other_lot.priority[0], other_lot.priority[1], priority_wait_map)
-            est += timedelta(minutes=_swait)
+            est_net += timedelta(minutes=_swait + _sct)
+        est_dev = other_state["ready_time"]
+        _dev_ok = True
+        for _s in other_remaining[other_idx:target_idx]:
+            _sct = get_step_ct(ct_lookup, _s.product_name, _s.step_number, other_lot.qty)
+            _swait = get_step_wait_time(other_lot.priority[0], other_lot.priority[1], priority_wait_map)
+            est_dev += timedelta(minutes=_swait)
             if machine_intervals and _s.eqp_ids and _s.eqp_ids != ["-"]:
                 _est_free = datetime.max
                 for _eid in _s.eqp_ids:
                     if _eid in special_eqp_map and special_eqp_map[_eid].together:
                         # 恒组批步骤：沿用当前批次设备的 pending 槽位（有则用，无则按就绪）
                         _pe = eqp_batch_state.get(_eid, {}).get("pending")
-                        _cand = _pe["start"] if _pe and _pe.get("start") else est
+                        _cand = _pe["start"] if _pe and _pe.get("start") else est_dev
                     else:
                         _cand = _find_earliest_slot(
-                            machine_intervals.get(_eid, []), est, timedelta(minutes=_sct))
+                            machine_intervals.get(_eid, []), est_dev, timedelta(minutes=_sct))
                     if _cand < _est_free:
                         _est_free = _cand
-                if _est_free != datetime.max:
-                    est = _est_free
-            est += timedelta(minutes=_sct)
-        if est > open_time + timedelta(minutes=wait_window):
+                if _est_free == datetime.max:
+                    _dev_ok = False
+                    break  # 设备快照不可信：退回纯 CT 累积
+                est_dev = _est_free
+            est_dev += timedelta(minutes=_sct)
+        # 两种估计都晚于窗口才排除（任一成立即可并入）
+        if est_net > open_time + timedelta(minutes=wait_window) and est_dev > open_time + timedelta(minutes=wait_window):
             continue
+        # 成员到达时间：优先设备感知（真实竞争），设备快照不可信时退回纯 CT 下界。
+        # 注意 est_dev 可能已含 datetime.max 污染（break 后未完成的累积），以 est_net 兜底。
+        est = est_dev if (_dev_ok and est_dev < datetime.max) else est_net
         # 成员目标步骤的粗排程锚点（含引用/Q-time 约束，ref-aware）若远超窗口，
         # 说明其"实际到达"无法在窗口内兑现（如被引用阻塞推到次日）——不得并入，
         # 否则批次为该成员空等、把本 lot 的 Q-time 拉爆（PC2 的 CURE 锚点被 real2
