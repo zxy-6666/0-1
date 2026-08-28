@@ -46,10 +46,10 @@ def scenario_realdata():
     le, ee, qa, n = run_lots(real_lots, special=se)
     out.append(("T1 基线(4lot)", n, [(a.lot_name, a.over_minutes) for a in qa if a.status != "OK"]))
     ma = [ManualAdjust("real1", "A005-R1-UF-CURE", datetime(2026, 8, 18, 20, 0), "delay")]
-    le, ee, qa, n = run_lots(real_lots, ma)
+    le, ee, qa, n = run_lots(real_lots, ma, special=se)
     out.append(("T2 delay real1 CURE>=20:00", n, [(a.lot_name, a.over_minutes) for a in qa if a.status != "OK"]))
     ma = [ManualAdjust("real1", "A005-R1-FC-REFLOW", datetime(2026, 8, 17, 20, 0), "delay")]
-    le, ee, qa, n = run_lots(real_lots, ma)
+    le, ee, qa, n = run_lots(real_lots, ma, special=se)
     out.append(("T3 delay real1 FC-REFLOW>=20:00", n, [(a.lot_name, a.over_minutes) for a in qa if a.status != "OK"]))
     return out
 
