@@ -25,15 +25,18 @@ def main():
     args = sys.argv[1:]
     seed = int(args[0]) if args else 20260828000
     which = "both"
+    benign = False
     for a in args:
         if a == "--pass1":
             which = "pass1"
         elif a == "--pass2":
             which = "pass2"
+        elif a == "--benign":
+            benign = True
 
     b = load_base()
     rng = random.Random(seed)
-    lots, flows, qtimes, se, ma, cons = mutate(b, rng, benign=False)
+    lots, flows, qtimes, se, ma, cons = mutate(b, rng, benign=benign)
     fm = get_product_flow_map(flows)
 
     print(f"===== seed={seed} 算例概况 =====")

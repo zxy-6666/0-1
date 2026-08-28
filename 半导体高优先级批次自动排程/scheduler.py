@@ -850,17 +850,50 @@ def _find_earliest_slot(
     lot_ready: datetime,
     duration: timedelta,
 ) -> datetime:
-    valid = [(iv[0] if iv[0] is not None else datetime.min,
-              iv[1] if iv[1] is not None else datetime.max)
-             for iv in intervals
-             if not (iv[0] is None and iv[1] is None)]
-    valid.sort(key=lambda x: x[0])
+    # 停机窗（3 元组, tag="down"）只约束"操作起点"不得落在窗内，允许长 CT 操作
+    # 跨越停机窗继续运行；普通占用区间要求完整时长不重叠。分开排序处理。
+    down = [(iv[0] if iv[0] is not None else datetime.min,
+             iv[1] if iv[1] is not None else datetime.max)
+            for iv in intervals
+            if len(iv) >= 3 and iv[2] == "down"]
+    down.sort(key=lambda x: x[0])
+    occupied = [(iv[0] if iv[0] is not None else datetime.min,
+                 iv[1] if iv[1] is not None else datetime.max)
+                for iv in intervals
+                if not (len(iv) >= 3 and iv[2] == "down")
+                and not (iv[0] is None and iv[1] is None)]
+    occupied.sort(key=lambda x: x[0])
+
+    def _start_ok(c: datetime) -> bool:
+        # 起点不得落在任一停机窗内
+        for ws, we in down:
+            if c >= we:
+                continue
+            if ws <= c < we:
+                return False
+        return True
+
     candidate = lot_ready
-    for iv_start, iv_end in valid:
-        if candidate + duration <= iv_start:
+    while True:
+        # 完整时长不得与已占用区间重叠
+        end = candidate + duration
+        bumped = False
+        for iv_start, iv_end in occupied:
+            if candidate >= iv_end:
+                continue
+            if end > iv_start:
+                candidate = iv_end
+                bumped = True
+                break
+        if bumped:
+            continue
+        if _start_ok(candidate):
             return candidate
-        if iv_end > candidate:
-            candidate = iv_end
+        # 起点在停机窗内：推到该窗口结束，再重查占用
+        for ws, we in down:
+            if ws <= candidate < we:
+                candidate = we
+                break
     return candidate
 
 
@@ -870,11 +903,18 @@ def _find_latest_slot(
     duration: timedelta,
 ) -> datetime:
     """在设备占用区间中，找到 deadline 之前最晚的可用时间槽，返回 start_time。
-    用于链拆分后反向调度：从 Q-time deadline 往前找最晚可用时间。"""
+    用于链拆分后反向调度：从 Q-time deadline 往前找最晚可用时间。
+    停机窗（3 元组, tag="down"）只约束起点不得落在窗内，允许操作跨越停机窗。"""
+    down = [(iv[0] if iv[0] is not None else datetime.min,
+             iv[1] if iv[1] is not None else datetime.max)
+            for iv in intervals
+            if len(iv) >= 3 and iv[2] == "down"]
+    down.sort(key=lambda x: x[0])
     valid = [(iv[0] if iv[0] is not None else datetime.min,
               iv[1] if iv[1] is not None else datetime.max)
              for iv in intervals
-             if not (iv[0] is None and iv[1] is None)]
+             if not (len(iv) >= 3 and iv[2] == "down")
+             and not (iv[0] is None and iv[1] is None)]
     valid.sort(key=lambda x: x[0])
     candidate_end = deadline
     candidate_start = candidate_end - duration
@@ -885,6 +925,13 @@ def _find_latest_slot(
         if iv_start < candidate_end:
             candidate_end = iv_start
             candidate_start = candidate_end - duration
+    # 起点不得落在停机窗内：若在窗内则推后到窗口结束（更晚、更贴近 deadline）
+    for ws, we in down:
+        if ws <= candidate_start < we:
+            candidate_start = we
+            if candidate_start + duration > deadline:
+                return datetime.min
+            break
     return max(candidate_start, datetime.min)
 
 
@@ -894,7 +941,22 @@ def _skip_unavailable(
     duration: timedelta,
 ) -> datetime:
     end = start + duration
-    for interval_start, interval_end in intervals:
+    for interval in intervals:
+        # 停机窗（3 元组, tag="down"）：只约束"新操作起点"不得落在窗内，
+        # 允许长 CT 操作跨越停机窗继续运行（如 qty=25 的 FC-REFLOW CT≈925min
+        # 超过每日 08:30-22:00 运行窗 810min，若要求完整时长不跨越会被推到
+        # 365 天窗口末尾、产生 2027 年远未来排程——fuzz seed 20260828001 根因）。
+        if len(interval) >= 3 and interval[2] == "down":
+            iv_start, iv_end = interval[0], interval[1]
+            actual_start = iv_start if iv_start is not None else datetime.min
+            actual_end = iv_end if iv_end is not None else datetime.max
+            if start >= actual_end:
+                continue
+            if actual_start <= start < actual_end:
+                start = actual_end
+                end = start + duration
+            continue
+        interval_start, interval_end = interval
         if interval_start is None and interval_end is None:
             continue
         actual_start = interval_start if interval_start is not None else datetime.min
@@ -968,10 +1030,6 @@ def _resolve_constraints(
                         break
         if start == old_start:
             break
-    if os.environ.get("SCHED_DBGR") == "1" and start - old_start > timedelta(days=30) and start.year >= 2027:
-        print(f"[DBGR] _resolve_constraints 跳远 {step_name} {eqp_id}: {old_start} -> {start} "
-              f"shift_windows={len(shift_change_intervals or [])} step_windows={len(step_windows.get(step_name, []))} "
-              f"end_windows={len(end_windows.get(step_name, []))}", flush=True)
     return start
 
 
@@ -1379,12 +1437,6 @@ def _compute_batch_slot(
         if (est_net > open_time + timedelta(minutes=wait_window)
                 and est_dev > open_time + timedelta(minutes=wait_window)
                 and est_act > open_time + timedelta(minutes=wait_window)):
-            if os.environ.get("SCHED_DBGB") == "1" and step.step_name.endswith("-UF-CURE"):
-                print(f"[DBGB] {lot.lot_name}.{step.step_name} 排除成员 {other_name}: "
-                      f"est_net={est_net:%m/%d %H:%M} est_dev={est_dev:%m/%d %H:%M} est_act={est_act:%m/%d %H:%M} "
-                      f"open+win={open_time + timedelta(minutes=wait_window):%m/%d %H:%M} "
-                      f"other_idx={other_idx} target={target.step_name} "
-                      f"other_ready={other_state['ready_time']:%m/%d %H:%M}", flush=True)
             continue
         # 成员到达时间：优先用含真实完成锚点的 est_act；否则设备感知（真实竞争），
         # 设备快照不可信时退回纯 CT 下界。注意 est_dev 可能已含 datetime.max 污染
@@ -1403,10 +1455,6 @@ def _compute_batch_slot(
         _oth_ca = other_state.get("coarse_anchors", [])
         if _oth_ca and target_idx < len(_oth_ca) and _oth_ca[target_idx] is not None:
             if _oth_ca[target_idx] > open_time + timedelta(minutes=wait_window):
-                if os.environ.get("SCHED_DBGB") == "1" and step.step_name.endswith("-UF-CURE"):
-                    print(f"[DBGB] {lot.lot_name}.{step.step_name} 排除成员 {other_name} 因粗排锚点: "
-                          f"ca={_oth_ca[target_idx]:%m/%d %H:%M} open+win={open_time + timedelta(minutes=wait_window):%m/%d %H:%M}",
-                          flush=True)
                 continue
         # 成员到达时间晚于本 lot 的 Q-time 截止：不得并入（否则批次被推迟到截止后）。
         # 注意：仅当成员到达【晚于当前批次开始时刻】且晚于截止时才排除——若成员虽然
@@ -1416,14 +1464,8 @@ def _compute_batch_slot(
         # 错误排除 → real2 单开一炉到 20:18，DISPENSE→CURE 超 Q 240min；并入后
         # 批次仍 14:45 开炉、real2 间隔 222min 达标）。
         if hard_deadline is not None and est > hard_deadline and est > batch_start:
-            if os.environ.get("SCHED_DBGB") == "1" and step.step_name.endswith("-UF-CURE"):
-                print(f"[DBGB] {lot.lot_name}.{step.step_name} 排除成员 {other_name} 因硬截止: "
-                      f"est={est:%m/%d %H:%M} deadline={hard_deadline:%m/%d %H:%M} batch_start={batch_start:%m/%d %H:%M}", flush=True)
             continue
         if member_qty + other_lot.qty > spec.max_qty:
-            if os.environ.get("SCHED_DBGB") == "1" and step.step_name.endswith("-UF-CURE"):
-                print(f"[DBGB] {lot.lot_name}.{step.step_name} 排除成员 {other_name} 因容量: "
-                      f"member_qty={member_qty} qty={other_lot.qty} max={spec.max_qty}", flush=True)
             continue
         member_qty += other_lot.qty
         members[other_name] = est
@@ -1443,10 +1485,6 @@ def _compute_batch_slot(
             "start": batch_start,
             "members": {name: est for name, est in members.items()},
         }
-    if os.environ.get("SCHED_DBGC2") == "1" and step.step_name.endswith("-UF-CURE"):
-        print(f"[DBGC2] {lot.lot_name} CURE slot: ready={ready_time:%m/%d/%Y %H:%M} open={open_time:%m/%d/%Y %H:%M} "
-              f"cur={cur_time} busy_until={bs.get('busy_until')} batch_start={batch_start:%m/%d/%Y %H:%M} "
-              f"members={list(members)} pending={bool(bs.get('pending'))}", flush=True)
     return True, batch_start
 
 
@@ -1671,8 +1709,6 @@ def _precompute_whole_chain_block(
 
     # ---- 迭代：向后倒排 + 整链后移，直至 Q-time 达标或无法再推迟 ----
     for _iter in range(12):
-        if os.environ.get("SCHED_DBGP") == "1" and lot.lot_name == "real1":
-            print(f"[DBGP] {names[:2]} iter={_iter} chain_start={chain_start}", flush=True)
         # 每轮重置模拟状态（基于当前真实机器状态的副本 + 链自身占用）
         sim_intervals = {k: list(v) for k, v in machine_intervals.items()}
         sim_avail = dict(machine_available)
@@ -1786,9 +1822,6 @@ def _precompute_whole_chain_block(
         # ---- 整链整体后移重排：某步被设备/约束推晚时，推迟 chain_start 后整体重排，
         # 保证链内背靠背且每步都经 _find_earliest_slot 校验（避免原地平移把端步骤移进
         # 已占用槽位、提交时再被顶开的"散开超 Q"退化，test09 根因）。
-        if os.environ.get("SCHED_DBGP") == "1" and lot.lot_name == "real1" and max_gap > timedelta(days=30):
-            print(f"[DBGP] max_gap={max_gap} ({(max_gap.days)}) days chain={names[:3]} "
-                  f"starts={[f'{s:%m/%d/%Y %H:%M}' if s else None for s in starts]}", flush=True)
         if max_gap > timedelta(0) and _iter < 11:
             chain_start += max_gap
             continue
@@ -1832,12 +1865,6 @@ def _precompute_whole_chain_block(
             plan = {}
             for k, (i, s) in enumerate(steps):
                 plan[i] = (eqps[k], starts[k], ends[k])
-            if os.environ.get("SCHED_DBGP") == "1" and lot.lot_name == "real1":
-                print(f"[DBGP] {lot.lot_name} 整链块成功 chain_start={chain_start} "
-                      f"starts={[f'{st:%m/%d/%Y %H:%M}' if st else None for st in starts]} "
-                      f"ends={[f'{en:%m/%d/%Y %H:%M}' if en else None for en in ends]} "
-                      f"lb={[f'{lower_bounds.get(i, None):%m/%d/%Y %H:%M}' if lower_bounds.get(i) else None for i, _ in steps]}",
-                      flush=True)
             return plan
 
         # 4. Q-time 超时：反推更晚的链首，重试
@@ -1861,9 +1888,6 @@ def _precompute_whole_chain_block(
         if (violation.start_mod or "track in").strip() != "track in":
             prefix_ct += cts[qk]
         target_chain_start = target_start - timedelta(minutes=prefix_ct)
-        if os.environ.get("SCHED_DBGP") == "1" and lot.lot_name == "real1" and target_chain_start.year >= 2027:
-            print(f"[DBGP] violation反推 {names[:3]} iter={_iter} q_aend={q_aend} target_start={target_start} "
-                  f"prefix_ct={prefix_ct} target_chain_start={target_chain_start} chain_start={chain_start}", flush=True)
         # 不能早于链首硬性下限；且必须比当前更晚（否则无法达成）
         lb0 = lower_bounds.get(steps[0][0])
         if lb0 is not None and target_chain_start < lb0:
@@ -2123,6 +2147,17 @@ def _try_schedule_chain_forward(
 
             ready_time = state["ready_time"] if scheduled_count == 0 else (
                 lot_entries[-1].end_time if lot_entries else state["ready_time"])
+
+            # 引用释放下界（已释放的 reference）：当前步骤不得早于释放时刻。
+            # 主循环单步路径经 _update_blocked_ready_time 处理；链内逐步骤放置同样需要，
+            # 否则链中间步骤（如 real1 的 UF-DISPENSE 等 PC1 的 UF-DISPENSE 释放 13:46）
+            # 会被 lot_entries[-1].end_time 提前放行 → reference 违背（fuzz seed 20260828166）。
+            if state.get("refs_registered"):
+                for _rk5, _bix5 in ref_block_info.items():
+                    if _bix5 is not None and i >= _bix5:
+                        _rv5 = ref_release_times.get(lot.lot_name, {}).get(_rk5)
+                        if _rv5 is not None and _rv5 != FAR_FUTURE and _rv5 > ready_time:
+                            ready_time = _rv5
 
             # 前缀的最后一步不能超过后缀开始时间（留出步间等待间隔）
             if i == prefix_range[-1]:
@@ -2431,6 +2466,15 @@ def _try_schedule_chain_forward(
         ready_time = state["ready_time"] if scheduled_count == 0 else (
             lot_entries[-1].end_time if lot_entries else state["ready_time"]
         )
+        # 引用释放下界（已释放的 reference）：链内逐步骤回退路径同样需钳制
+        # 释放时刻（与 2157 处前缀循环一致），否则链中间步骤被 lot_entries[-1]
+        # 提前放行 → reference 违背。
+        if state.get("refs_registered"):
+            for _rk6, _bix6 in ref_block_info.items():
+                if _bix6 is not None and i >= _bix6:
+                    _rv6 = ref_release_times.get(lot.lot_name, {}).get(_rk6)
+                    if _rv6 is not None and _rv6 != FAR_FUTURE and _rv6 > ready_time:
+                        ready_time = _rv6
 
         best_eqp = None
         best_start = datetime.max
@@ -4202,8 +4246,6 @@ def _run_schedule_pass(
                             _pred = max(schedule_start, _ca[_rel_idx] + timedelta(minutes=_ct2))
                         ref_release_times[_dname][_rk] = _pred
                         pending_refs[_dname].discard(_rk)
-                        if os.environ.get("SCHED_DBGJ") == "1" and _pred.year >= 2027:
-                            print(f"[DBGJ] 死锁放松预测释放 {_dname} -> {_rk} = {_pred} (ca_idx={_rel_idx})", flush=True)
                         _relaxed = True
                 if _relaxed:
                     logger.warning("死锁环已用预测释放打破: %s", blocked_names)
@@ -4229,11 +4271,6 @@ def _run_schedule_pass(
             if next_time <= current_time:
                 current_time += timedelta(minutes=1)
             else:
-                if os.environ.get("SCHED_DBGJ") == "1" and next_time.year >= 2027:
-                    _src = [f"{n}(ready={lot_state[n]['ready_time']:%m/%d/%Y %H:%M},idx={lot_state[n]['step_index']})"
-                            for n in lot_state if not lot_state[n]["done"] and lot_state[n]["ready_time"] == next_unblocked_time]
-                    print(f"[DBGJ] no_ready 推进 current_time -> {next_time} next_unblocked={next_unblocked_time} src={_src} "
-                          f"all_blocked_checked={all_blocked}", flush=True)
                 current_time = next_time
             continue
 
@@ -4388,8 +4425,6 @@ def _run_schedule_pass(
                 if _s2["ready_time"] < _next_ready:
                     _next_ready = _s2["ready_time"]
             if _next_ready < current_time + timedelta(hours=6):
-                if os.environ.get("SCHED_DBGJ") == "1" and _next_ready.year >= 2027:
-                    print(f"[DBGJ] defer空转推进 current_time -> {_next_ready} (deferred={sorted(deferred)})", flush=True)
                 current_time = max(current_time + timedelta(minutes=1), _next_ready)
                 continue
         # 优先排非 defer 的 lot；全 defer 时退化按原排序推进，保证不死锁
@@ -4444,9 +4479,6 @@ def _run_schedule_pass(
                 _cycle_forecast_keys,  # 环内预测释放的 ref key 集合
             )
             if chain_scheduled or state.get("chain_reverse_pending"):
-                if os.environ.get("SCHED_DBGJ") == "1" and lot_entries and lot_entries[-1].end_time.year >= 2027:
-                    print(f"[DBGJ] 链调度 current_time -> {lot_entries[-1].end_time} by {name} "
-                          f"last={lot_entries[-1].step_name} scheduled={scheduled_count} chain={chain_info.get('chain_steps', [])}", flush=True)
                 current_time = max(current_time, lot_entries[-1].end_time if lot_entries else current_time)
                 continue
             if scheduled_count > 0:
@@ -4615,8 +4647,6 @@ def _run_schedule_pass(
                     _wait_until = _ma if _wait_until is None else min(_wait_until, _ma)
             if _wait_until is None:
                 _wait_until = current_time + timedelta(minutes=1)
-            if os.environ.get("SCHED_DBGJ") == "1" and _wait_until.year >= 2027:
-                print(f"[DBGJ] 设备忙等待推进 current_time -> {_wait_until} by {name}:{step.step_name}", flush=True)
             current_time = _wait_until
             continue
 
@@ -4723,8 +4753,6 @@ def _run_schedule_pass(
         if _os.environ.get("SCHED_DBG4") == "1" and end_time - current_time > timedelta(minutes=120) and current_time >= datetime(2026,8,18,14,0):
             print(f"[DBG5] jump current={current_time.strftime('%m/%d %H:%M')} -> {end_time.strftime('%m/%d %H:%M')} by {name}:{step.step_name} eqp={best_eqp}", flush=True)
         current_time = max(current_time, end_time)
-        if os.environ.get("SCHED_DBGJ") == "1" and current_time.year >= 2027:
-            print(f"[DBGJ] 调度后 current_time -> {current_time} by {name}:{step.step_name} start={start_time} end={end_time}", flush=True)
 
     # ---- 排程合理性智能检测（不改变结果，只告警） ----
     try:

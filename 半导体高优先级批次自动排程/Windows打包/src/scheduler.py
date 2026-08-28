@@ -28,6 +28,7 @@ from models import (
     Lot, FlowStep, QTimeConstraint,
     ScheduleEntry, EqpScheduleEntry, QTimeAlert,
     StepTimeWindow, ShiftChangeTime, EqpConstraint, ManualAdjust, SpecialLotStep, SpecialEqp,
+    LotConstraint,
 )
 from data_loader import get_product_flow_map, get_step_index_in_flow, get_step_ct
 
@@ -849,17 +850,50 @@ def _find_earliest_slot(
     lot_ready: datetime,
     duration: timedelta,
 ) -> datetime:
-    valid = [(iv[0] if iv[0] is not None else datetime.min,
-              iv[1] if iv[1] is not None else datetime.max)
-             for iv in intervals
-             if not (iv[0] is None and iv[1] is None)]
-    valid.sort(key=lambda x: x[0])
+    # 停机窗（3 元组, tag="down"）只约束"操作起点"不得落在窗内，允许长 CT 操作
+    # 跨越停机窗继续运行；普通占用区间要求完整时长不重叠。分开排序处理。
+    down = [(iv[0] if iv[0] is not None else datetime.min,
+             iv[1] if iv[1] is not None else datetime.max)
+            for iv in intervals
+            if len(iv) >= 3 and iv[2] == "down"]
+    down.sort(key=lambda x: x[0])
+    occupied = [(iv[0] if iv[0] is not None else datetime.min,
+                 iv[1] if iv[1] is not None else datetime.max)
+                for iv in intervals
+                if not (len(iv) >= 3 and iv[2] == "down")
+                and not (iv[0] is None and iv[1] is None)]
+    occupied.sort(key=lambda x: x[0])
+
+    def _start_ok(c: datetime) -> bool:
+        # 起点不得落在任一停机窗内
+        for ws, we in down:
+            if c >= we:
+                continue
+            if ws <= c < we:
+                return False
+        return True
+
     candidate = lot_ready
-    for iv_start, iv_end in valid:
-        if candidate + duration <= iv_start:
+    while True:
+        # 完整时长不得与已占用区间重叠
+        end = candidate + duration
+        bumped = False
+        for iv_start, iv_end in occupied:
+            if candidate >= iv_end:
+                continue
+            if end > iv_start:
+                candidate = iv_end
+                bumped = True
+                break
+        if bumped:
+            continue
+        if _start_ok(candidate):
             return candidate
-        if iv_end > candidate:
-            candidate = iv_end
+        # 起点在停机窗内：推到该窗口结束，再重查占用
+        for ws, we in down:
+            if ws <= candidate < we:
+                candidate = we
+                break
     return candidate
 
 
@@ -869,11 +903,18 @@ def _find_latest_slot(
     duration: timedelta,
 ) -> datetime:
     """在设备占用区间中，找到 deadline 之前最晚的可用时间槽，返回 start_time。
-    用于链拆分后反向调度：从 Q-time deadline 往前找最晚可用时间。"""
+    用于链拆分后反向调度：从 Q-time deadline 往前找最晚可用时间。
+    停机窗（3 元组, tag="down"）只约束起点不得落在窗内，允许操作跨越停机窗。"""
+    down = [(iv[0] if iv[0] is not None else datetime.min,
+             iv[1] if iv[1] is not None else datetime.max)
+            for iv in intervals
+            if len(iv) >= 3 and iv[2] == "down"]
+    down.sort(key=lambda x: x[0])
     valid = [(iv[0] if iv[0] is not None else datetime.min,
               iv[1] if iv[1] is not None else datetime.max)
              for iv in intervals
-             if not (iv[0] is None and iv[1] is None)]
+             if not (len(iv) >= 3 and iv[2] == "down")
+             and not (iv[0] is None and iv[1] is None)]
     valid.sort(key=lambda x: x[0])
     candidate_end = deadline
     candidate_start = candidate_end - duration
@@ -884,6 +925,13 @@ def _find_latest_slot(
         if iv_start < candidate_end:
             candidate_end = iv_start
             candidate_start = candidate_end - duration
+    # 起点不得落在停机窗内：若在窗内则推后到窗口结束（更晚、更贴近 deadline）
+    for ws, we in down:
+        if ws <= candidate_start < we:
+            candidate_start = we
+            if candidate_start + duration > deadline:
+                return datetime.min
+            break
     return max(candidate_start, datetime.min)
 
 
@@ -893,7 +941,22 @@ def _skip_unavailable(
     duration: timedelta,
 ) -> datetime:
     end = start + duration
-    for interval_start, interval_end in intervals:
+    for interval in intervals:
+        # 停机窗（3 元组, tag="down"）：只约束"新操作起点"不得落在窗内，
+        # 允许长 CT 操作跨越停机窗继续运行（如 qty=25 的 FC-REFLOW CT≈925min
+        # 超过每日 08:30-22:00 运行窗 810min，若要求完整时长不跨越会被推到
+        # 365 天窗口末尾、产生 2027 年远未来排程——fuzz seed 20260828001 根因）。
+        if len(interval) >= 3 and interval[2] == "down":
+            iv_start, iv_end = interval[0], interval[1]
+            actual_start = iv_start if iv_start is not None else datetime.min
+            actual_end = iv_end if iv_end is not None else datetime.max
+            if start >= actual_end:
+                continue
+            if actual_start <= start < actual_end:
+                start = actual_end
+                end = start + duration
+            continue
+        interval_start, interval_end = interval
         if interval_start is None and interval_end is None:
             continue
         actual_start = interval_start if interval_start is not None else datetime.min
@@ -1114,12 +1177,19 @@ def _check_special_eqp_available(
 
         if current_lots >= spec.max_lots:
             # 当前活跃 Lot 数已达上限，等待最早结束的 Lot
-            earliest_end = min(et for _, _, et in bs["active"])
-            return False, earliest_end
+            if bs["active"]:
+                earliest_end = min(et for _, _, et in bs["active"])
+                return False, earliest_end
+            return False, ready_time  # 异常配置（active 为空仍达上限），防御空列表
         if current_qty + lot_qty > spec.max_qty:
             # 加入后会超过 qty 限制
-            earliest_end = min(et for _, _, et in bs["active"])
-            return False, earliest_end
+            if bs["active"]:
+                earliest_end = min(et for _, _, et in bs["active"])
+                return False, earliest_end
+            # 空炉 + 单 lot 本身超容量：放行单独运行（设备物理上必须处理该 lot），
+            # 否则 _compute_batch_slot/_check_special_eqp_available 永久拒绝 →
+            # 主循环空转（实测 fuzz 扰动出 20 片 vs 上限 15 后以 1min/轮 磨 20 万轮）。
+            return True, ready_time
 
         return True, ready_time
 
@@ -1244,7 +1314,12 @@ def _compute_batch_slot(
     if in_lots >= spec.max_lots:
         return False, bs["busy_until"] or ready_time
     if in_qty + lot.qty > spec.max_qty:
-        return False, bs["busy_until"] or ready_time
+        # 单 lot 本身超容量（qty > max_qty，如 fuzz 扰动出的 20 片 vs 上限 15）：
+        # 不能永久拒绝——设备物理上必须单独处理该 lot，否则会无限等待空转
+        # （实测 real1 的 UF-CURE 被拒后主循环以 1min/轮 磨 20 万轮、模拟时间推到次年）。
+        # 空炉时放行单批（宁可产生 1 条 max_qty 告警，也不让 lot 永远排不上）。
+        if not (lot.qty > spec.max_qty and in_qty == 0 and in_lots == 0):
+            return False, bs["busy_until"] or ready_time
 
     # 开新批次：本批次最早开炉时刻 = max(本 Lot 就绪, 设备实际空闲时刻)。
     # 不能用纯 ready_time：等待中的 Lot（如 CURE 等上一批次结束）ready_time 仍是旧的，
@@ -1381,8 +1456,14 @@ def _compute_batch_slot(
         if _oth_ca and target_idx < len(_oth_ca) and _oth_ca[target_idx] is not None:
             if _oth_ca[target_idx] > open_time + timedelta(minutes=wait_window):
                 continue
-        # 成员到达时间晚于本 lot 的 Q-time 截止：不得并入（否则批次被推迟到截止后）
-        if hard_deadline is not None and est > hard_deadline:
+        # 成员到达时间晚于本 lot 的 Q-time 截止：不得并入（否则批次被推迟到截止后）。
+        # 注意：仅当成员到达【晚于当前批次开始时刻】且晚于截止时才排除——若成员虽然
+        # 晚于截止、但早于批次开始时刻（如批次因设备占用已必然晚于截止开炉），并入
+        # 不会让批次更晚，此时应放行共炉（fuzz 实测：PC1 的 CURE 批次因 PKPOV001
+        # 忙 14:45 才开炉，real2 的 CURE 就绪 09:05 < 14:45，却被"晚于截止 08:02"
+        # 错误排除 → real2 单开一炉到 20:18，DISPENSE→CURE 超 Q 240min；并入后
+        # 批次仍 14:45 开炉、real2 间隔 222min 达标）。
+        if hard_deadline is not None and est > hard_deadline and est > batch_start:
             continue
         if member_qty + other_lot.qty > spec.max_qty:
             continue
@@ -2067,6 +2148,17 @@ def _try_schedule_chain_forward(
             ready_time = state["ready_time"] if scheduled_count == 0 else (
                 lot_entries[-1].end_time if lot_entries else state["ready_time"])
 
+            # 引用释放下界（已释放的 reference）：当前步骤不得早于释放时刻。
+            # 主循环单步路径经 _update_blocked_ready_time 处理；链内逐步骤放置同样需要，
+            # 否则链中间步骤（如 real1 的 UF-DISPENSE 等 PC1 的 UF-DISPENSE 释放 13:46）
+            # 会被 lot_entries[-1].end_time 提前放行 → reference 违背（fuzz seed 20260828166）。
+            if state.get("refs_registered"):
+                for _rk5, _bix5 in ref_block_info.items():
+                    if _bix5 is not None and i >= _bix5:
+                        _rv5 = ref_release_times.get(lot.lot_name, {}).get(_rk5)
+                        if _rv5 is not None and _rv5 != FAR_FUTURE and _rv5 > ready_time:
+                            ready_time = _rv5
+
             # 前缀的最后一步不能超过后缀开始时间（留出步间等待间隔）
             if i == prefix_range[-1]:
                 _junction_wait = _effective_chain_wait(lot, chain_info, priority_wait_map)
@@ -2374,6 +2466,15 @@ def _try_schedule_chain_forward(
         ready_time = state["ready_time"] if scheduled_count == 0 else (
             lot_entries[-1].end_time if lot_entries else state["ready_time"]
         )
+        # 引用释放下界（已释放的 reference）：链内逐步骤回退路径同样需钳制
+        # 释放时刻（与 2157 处前缀循环一致），否则链中间步骤被 lot_entries[-1]
+        # 提前放行 → reference 违背。
+        if state.get("refs_registered"):
+            for _rk6, _bix6 in ref_block_info.items():
+                if _bix6 is not None and i >= _bix6:
+                    _rv6 = ref_release_times.get(lot.lot_name, {}).get(_rk6)
+                    if _rv6 is not None and _rv6 != FAR_FUTURE and _rv6 > ready_time:
+                        ready_time = _rv6
 
         best_eqp = None
         best_start = datetime.max
@@ -2542,6 +2643,7 @@ def _coarse_earliest_anchors(
     qtimes: list = None,
     manual_adjusts: list = None,
     eqp_constraints: list = None,
+    shift_times: Optional[list] = None,
 ) -> dict[str, list[datetime]]:
     """粗排程第一遍：忽略设备竞争，只按 constraints 计算每个 lot 每个 step 的
     "最早可行开始时间"锚点。
@@ -2566,6 +2668,9 @@ def _coarse_earliest_anchors(
 
     # 设备停机窗：{eqp: [(start,end)]}，用于把落在停机窗的步骤锚点推到窗口结束之后
     down_map = _expand_eqp_constraints(eqp_constraints or [], schedule_start)
+    # shift_times 用于 start_mod="shift"/"shift_day" 的 reference 释放计算。
+    # 缺省给一个默认班次，避免空列表导致 _next_shift_after/_next_morning_shift 越界。
+    shift_times = shift_times or [(8, 30)]
 
     def _resolve_eqp_downtime(_eqps: list, _t: datetime) -> datetime:
         """若 _t 落在任一可用设备的停机窗内，推到窗口结束；返回最早的合法开始时刻。"""
@@ -2759,7 +2864,7 @@ def _coarse_earliest_anchors(
                     ref_anchor_t = anchors[ref_lot_name][ref_rel]
                 ref_ct = get_step_ct(ct_lookup, ref_flow[ref_flow_idx].product_name,
                                      ref_flow[ref_flow_idx].step_number, ref_lot.qty)
-                release = _ref_release_offset(ref_anchor_t + timedelta(minutes=ref_ct), r.start_mod, [])
+                release = _ref_release_offset(ref_anchor_t + timedelta(minutes=ref_ct), r.start_mod, shift_times)
 
             lot_obj = lot_by_name[lot_name]
             lot_flow = flow_map.get(lot_obj.product_name)
@@ -3146,6 +3251,61 @@ def _collect_ref_release_forecast(
     return forecast
 
 
+def _count_ref_violations(
+    lot_entries: list,
+    lots: list,
+    shift_times: list,
+) -> int:
+    """统计一次排程结果中 reference 约束违背的数量（供两遍取优比较）。
+
+    由 lots 自带的 references 重建约束列表，复用 validation._check_references。
+    """
+    from validation import _check_references
+    cons = []
+    for l in lots:
+        for ref in l.references or []:
+            cons.append(LotConstraint(
+                lot_name=l.lot_name, reference_lot=ref.reference_lot,
+                reference_step=ref.reference_step, start_mod=ref.start_mod,
+                start_step=ref.start_step, hold_periods=ref.hold_periods))
+    if not cons:
+        return 0
+    return len(_check_references(lot_entries, cons, shift_times or []))
+
+
+def _count_missing_steps(lot_entries, lots, flows) -> int:
+    """统计一次排程结果中"缺失步骤"总数（供两遍取优比较）。
+
+    与 validation 的缺失步骤判定一致：从 lot.current_step_name 起、到 target_step
+    （无则流程末尾）为止的应有步骤集合，减去实际已排步骤。
+    两遍取优时缺失步骤是最硬性指标：丢步骤的排程无论 Q-time 多优都是非法结果
+    （且丢步通常会使 Q-time 告警变少——步骤都没排何来超时——会反向骗过择优逻辑）。
+    """
+    from data_loader import get_step_index_in_flow as _gsi
+    flow_map = get_product_flow_map(flows)
+    by_lot: dict[str, set] = {}
+    for e in lot_entries:
+        by_lot.setdefault(e.lot_name, set()).add(e.step_name)
+    missing = 0
+    for lot in lots:
+        pf = flow_map.get(lot.product_name)
+        if not pf:
+            continue
+        try:
+            start_idx = _gsi(pf, lot.current_step_name)
+        except ValueError:
+            continue
+        end_idx = len(pf)
+        if lot.target_step:
+            try:
+                end_idx = _gsi(pf, lot.target_step) + 1
+            except ValueError:
+                pass
+        expected = set(s.step_name for s in pf[start_idx:end_idx])
+        missing += len(expected - by_lot.get(lot.lot_name, set()))
+    return missing
+
+
 def _chain_ref_anchor(
     state: dict,
     lot: Lot,
@@ -3493,13 +3653,23 @@ def schedule(
         qtight_safety_margin=qtight_safety_margin,
         chain_wait_safety=chain_wait_safety,
         out_warnings=out_warnings)
-    # 两遍都比，取 Q-time 超时更少者；等数时取总超时分钟更少者。保证回喂预测
-    # 的副作用不会把原本更优的第一遍结果劣化（例如优化器反复重排的手动调整场景）。
+    # 两遍都比，取更优者。择优键为四元组，优先级从高到低：
+    #   1) 缺失步骤数（最硬性：丢步骤的排程非法；且丢步会让 Q-time 告警变少，
+    #      单独比 Q-time 会被"缺步者"反向骗赢——实测两遍都缺步时无法区分）；
+    #   2) reference 违背数（约束合法性，宁可少一项 Q-time 收益也要约束合法）；
+    #   3) Q-time 超时条目数；
+    #   4) 总超时分钟。
+    # 保证回喂预测的副作用不会把原本更优的第一遍结果劣化（例如优化器反复重排的
+    # 手动调整场景）。
+    _r1 = _count_ref_violations(_le1, _orig_lots, shift_times)
+    _r2 = _count_ref_violations(_le2, _orig_lots, shift_times)
+    _m1 = _count_missing_steps(_le1, _orig_lots, flows)
+    _m2 = _count_missing_steps(_le2, _orig_lots, flows)
     _n1 = len([a for a in _qa1 if a.status != "OK"])
     _n2 = len([a for a in _qa2 if a.status != "OK"])
     _o1 = sum(getattr(a, "over_minutes", 0) for a in _qa1 if a.status != "OK")
     _o2 = sum(getattr(a, "over_minutes", 0) for a in _qa2 if a.status != "OK")
-    if (_n1, _o1) <= (_n2, _o2):
+    if (_m1, _r1, _n1, _o1) <= (_m2, _r2, _n2, _o2):
         return _le1, _ee1, _qa1
     return _le2, _ee2, _qa2
 
@@ -3624,10 +3794,15 @@ def _run_schedule_pass(
     if eqp_constraints:
         expanded = _expand_eqp_constraints(eqp_constraints, schedule_start, schedule_end)
         for eqp_name, intervals in expanded.items():
+            # 停机窗标记为 3 元组 (start, end, "down")：调度时只约束"新操作起点"
+            # 不得落在停机窗内，允许长 CT 操作跨越停机窗继续运行（如 qty=25 的
+            # FC-REFLOW CT≈925min 超过每日 08:30-22:00 运行窗 810min，若按"完整
+            # 时长不得跨越停机窗"处理会被推到 365 天窗口末尾、产生 2027 年排程——
+            # fuzz 实测 seed 20260828001 的远未来排程根因）。
             if eqp_name in machine_intervals:
-                machine_intervals[eqp_name].extend(intervals)
+                machine_intervals[eqp_name].extend([(s, e, "down") for s, e in intervals])
             else:
-                machine_intervals[eqp_name] = list(intervals)
+                machine_intervals[eqp_name] = [(s, e, "down") for s, e in intervals]
                 machine_available[eqp_name] = schedule_start
             machine_intervals[eqp_name].sort(key=lambda x: x[0] if x[0] else datetime.min)
 
@@ -3683,7 +3858,8 @@ def _run_schedule_pass(
         lots, flow_map, ct_lookup, special_lot_step_lookup,
         priority_wait_map or {}, schedule_start, qtimes,
         manual_adjusts=manual_adjusts,
-        eqp_constraints=eqp_constraints)
+        eqp_constraints=eqp_constraints,
+        shift_times=shift_times)
 
     # ---- 引用环内的 reference 预测释放 ----
     # 环内 lot 互相等待（A 等 B 完成、B 又等 A 完成）时，贪婪排程阶段无法得到
@@ -3697,13 +3873,86 @@ def _run_schedule_pass(
     _cycle_forecast: dict[tuple[str, tuple[str, str]], datetime] = {}
     _cycle_forecast_keys: set = set()
     _cycle_lots_now = set(_anchor_audit.get("cycle_lots") or ())
+    lot_by_name = {l.lot_name: l for l in lots}
+    # 各 lot 在流程中的当前步骤索引（判定"引用源步骤已被源 lot 越过"用）
+    _src_cur_idx: dict[str, int] = {}
+    for _l in lots:
+        _lpf = flow_map.get(_l.product_name)
+        if _lpf:
+            try:
+                _src_cur_idx[_l.lot_name] = get_step_index_in_flow(_lpf, _l.current_step_name)
+            except ValueError:
+                _src_cur_idx[_l.lot_name] = 0
     # 仅当粗排程 60 轮未收敛（真·循环引用、已触发自然锚点回退）时才启用预测释放：
     # 收敛的环（IOU1↔IOU1-f、PC↔real）真实释放会正常到来，预测反而可能偏早/偏晚，
     # 干扰设备占用导致 Q-time 超时（PC↔real 强制延迟实测 2→7 错误）；只有真·环
     # （A.FTF 等 B.FTF 完成、B.FTF 又等 A.FTF 完成）真实释放永远不会到来，才需要
     # 用"自然就绪时刻"预测打破互相阻塞死锁。
+    # 死锁环判定：把环内 lot 按引用图【连通分量】分组，仅对"真·死锁分量"启用
+    # 预测释放。真·死锁分量 = 分量内至少一个 lot 的首步被同分量引用阻塞
+    # （block_idx==0）——该 lot 无法启动，而分量内其它 lot 又可能依赖它的释放，
+    # 形成闭合等待、真实释放永远不会到来。收敛分量（如 PC↔real：PC1 等
+    # real1.UF-BAKE、real1 等 PC1.FC-REFLOW，但两者的首步都未被同分量引用阻塞）
+    # 真实释放会正常到来——若也用自然锚点预测，预测会偏早（忽略设备/班次延迟），
+    # 下游 lot 提前调度产生 reference 违背（fuzz 实测 seed 20260828035：real1.
+    # UF-BAKE 实际 08/19 09:05 完成，自然锚点预测却给 08/18 03:30 → PC1.
+    # UF-DISPENSE 08/18 09:35 提前开工，违反引用约束；而同 seed 的 PC2↔real2
+    # 是真·死锁分量——PC2 首步等 real2.DAF-SAT，real2 又等 PC2.FC-REFLOW）。
+    _deadlock_lots: set = set()
     if _cycle_lots_now and _anchor_audit.get("fallback_used"):
-        lot_by_name = {l.lot_name: l for l in lots}
+        # 环内引用图的无向连通分量
+        _adj: dict[str, set[str]] = {}
+        for _cln in _cycle_lots_now:
+            _adj.setdefault(_cln, set())
+        for _cl in lots:
+            if _cl.lot_name not in _cycle_lots_now:
+                continue
+            for _r in _cl.references or []:
+                if _r.reference_lot in _cycle_lots_now and _r.reference_lot != _cl.lot_name:
+                    _adj[_cl.lot_name].add(_r.reference_lot)
+                    _adj.setdefault(_r.reference_lot, set()).add(_cl.lot_name)
+        _seen_c: set = set()
+        for _cln in _cycle_lots_now:
+            if _cln in _seen_c:
+                continue
+            _comp: set = set()
+            _stack = [_cln]
+            while _stack:
+                _n = _stack.pop()
+                if _n in _seen_c:
+                    continue
+                _seen_c.add(_n)
+                _comp.add(_n)
+                _stack.extend(_adj.get(_n, ()))
+            # 判断该分量是否真·死锁（任一 lot 首步被同分量引用阻塞）
+            _comp_deadlock = False
+            for _cl2 in _comp:
+                _cl2_lot = lot_by_name.get(_cl2)
+                if not _cl2_lot:
+                    continue
+                _cl2f = flow_map.get(_cl2_lot.product_name)
+                if not _cl2f:
+                    continue
+                try:
+                    _cl2_cur = get_step_index_in_flow(_cl2f, _cl2_lot.current_step_name)
+                except ValueError:
+                    _cl2_cur = 0
+                _cl2_rem = _cl2f[_cl2_cur:]
+                for _r2 in _cl2_lot.references or []:
+                    if _r2.reference_lot not in _comp:
+                        continue
+                    if _r2.start_step:
+                        _bi2 = next((i for i, _s in enumerate(_cl2_rem) if _s.step_name == _r2.start_step), None)
+                    else:
+                        _bi2 = 0
+                    if _bi2 == 0:
+                        _comp_deadlock = True
+                        break
+                if _comp_deadlock:
+                    break
+            if _comp_deadlock:
+                _deadlock_lots |= _comp
+    if _deadlock_lots:
         for _lot in lots:
             _pf = flow_map.get(_lot.product_name)
             if not _pf:
@@ -3715,8 +3964,8 @@ def _run_schedule_pass(
             for _r in _lot.references or []:
                 if not (_r.reference_lot and _r.start_step):
                     continue
-                if _r.reference_lot not in _cycle_lots_now:
-                    continue  # 源在环外：真实释放会正常到来，无需预测
+                if _r.reference_lot not in _deadlock_lots or _lot.lot_name not in _deadlock_lots:
+                    continue  # 源/本 lot 不在真·死锁分量：真实释放会正常到来，无需预测
                 _src_lot = lot_by_name.get(_r.reference_lot)
                 _src_flow = flow_map.get(_src_lot.product_name) if _src_lot else None
                 if not (_src_lot and _src_flow):
@@ -3763,9 +4012,51 @@ def _run_schedule_pass(
         base_ready_time = ready_time
         if has_refs:
             active_refs = lot.references
+            # 判定"本排程内永远不会释放"的引用（继续等待必然死锁 → 后续步骤全部缺失）：
+            #   a) 源 lot 不在本轮排程列表（外部 lot，其步骤永远不会被本 schedule 排到）；
+            #   b) 源 lot 在本轮，但其 reference_step 已在源 lot 当前步骤之前（源已越过该步，
+            #      该步骤不会被再次排程，释放永远不会到来）；
+            #   c) 源 lot 设置了 target_step 且其位置在 reference_step 之前（源只排到
+            #      target 为止，reference 步骤超出源的目标，同样永远不会被排到）。
+            # 此类引用视为"调度开始时已满足"，立即预释放（release 基于源 lot 就绪时刻 /
+            # schedule_start 施加 start_mod 偏移），避免下游整链阻塞。这是 fuzz 扰动
+            # （把 current_step 后移 / 改引用 / 设 target 截断）实测最大的缺失步骤来源：
+            # PC2 等 real2.UF-BAKE、real1 等 PC1.BG2-INSP2-REV、PC1 等 real1.AB1IQC-INSP-REV
+            # 全部卡死 → all_blocked 死锁 break → 每 lot 缺 70~100 步。
+            never_release_keys: set = set()
+            for ref in active_refs:
+                ref_key = (ref.reference_lot, ref.reference_step or "")
+                src = lot_by_name.get(ref.reference_lot)
+                if src is None:
+                    never_release_keys.add(ref_key)  # (a) 外部源
+                    continue
+                src_flow = flow_map.get(src.product_name)
+                if not src_flow:
+                    never_release_keys.add(ref_key)
+                    continue
+                try:
+                    _sref = get_step_index_in_flow(src_flow, ref.reference_step or "")
+                except ValueError:
+                    _sref = -1
+                if _sref < 0:
+                    continue
+                _scur = _src_cur_idx.get(src.lot_name, 0)
+                if _sref < _scur:
+                    never_release_keys.add(ref_key)  # (b) 源已越过该步
+                    continue
+                if src.target_step:
+                    try:
+                        _stgt = get_step_index_in_flow(src_flow, src.target_step)
+                    except ValueError:
+                        _stgt = -1
+                    if _stgt >= 0 and _sref > _stgt:
+                        never_release_keys.add(ref_key)  # (c) 源 target 截断在该步之前
+                        continue
+
             first_blocked = any(
                 ref_block_info.get((r.reference_lot, r.reference_step or "")) == 0
-                for r in active_refs)
+                for r in active_refs
+                if (r.reference_lot, r.reference_step or "") not in never_release_keys)
             if first_blocked:
                 # 首步即被引用阻塞：若该引用在环内已有预测释放，用
                 # max(自然就绪, 预测释放) 作为 ready_time（不硬阻塞，避免死锁）；
@@ -3773,7 +4064,8 @@ def _run_schedule_pass(
                 _blocked_keys = [
                     (r.reference_lot, r.reference_step or "")
                     for r in active_refs
-                    if ref_block_info.get((r.reference_lot, r.reference_step or "")) == 0]
+                    if (ref_block_info.get((r.reference_lot, r.reference_step or "")) == 0
+                        and (r.reference_lot, r.reference_step or "") not in never_release_keys)]
                 _blocked_fc = [
                     _cycle_forecast[(lot.lot_name, k)] for k in _blocked_keys
                     if (lot.lot_name, k) in _cycle_forecast]
@@ -3786,6 +4078,19 @@ def _run_schedule_pass(
             ref_release_times[lot.lot_name] = {}
             for ref in active_refs:
                 ref_key = (ref.reference_lot, ref.reference_step or "")
+                if ref_key in never_release_keys:
+                    # 预释放：基于源 lot 就绪时刻（源已越过该步）或 schedule_start（外部源）
+                    _src = lot_by_name.get(ref.reference_lot)
+                    _rel_base = schedule_start
+                    if _src is not None and _src.start_time is not None:
+                        _rel_base = max(schedule_start, _src.start_time)
+                    ref_release_times[lot.lot_name][ref_key] = _ref_release_offset(
+                        _rel_base, ref.start_mod, shift_times)
+                    logger.warning(
+                        "引用 %s -> %s.%s 源步骤已越过/不在排程，视为已满足（预释放 %s）",
+                        lot.lot_name, ref.reference_lot, ref.reference_step or "",
+                        ref_release_times[lot.lot_name][ref_key])
+                    continue
                 pending_refs[lot.lot_name].add(ref_key)
                 reference_deps.setdefault(ref_key, []).append(lot.lot_name)
                 # 环内预测释放：预先视为已释放，避免互相等待死锁
@@ -3905,6 +4210,55 @@ def _run_schedule_pass(
 
             if all_blocked:
                 blocked_names = [n for n, s in lot_state.items() if not s["done"]]
+                # 死锁：所有未完成 Lot 均被 pending reference 阻塞。若能找到
+                # "源也在未完成且被阻塞"的引用（构成循环等待——源自己卡在等待里、
+                # 无法到达释放步骤，真实释放永远不会到来），则用预测释放打破死锁
+                # 后继续，避免整链缺步骤（fuzz 实测：PC2 等 real2.DAF-SAT、
+                # real2 又等 PC2.FC-REFLOW，PC2 首步被钉死 → all_blocked → break
+                # → 每 lot 缺几十步）。预测释放 = 源该步骤粗排锚点 + CT。
+                _relaxed = False
+                for _dname in list(blocked_names):
+                    _dst = lot_state[_dname]
+                    if not _dst.get("refs_registered"):
+                        continue
+                    for _rk in list(pending_refs.get(_dname, set())):
+                        _src_name, _src_step = _rk
+                        _src_st = lot_state.get(_src_name)
+                        if _src_st is None or _src_st["done"] or _src_name not in blocked_names:
+                            continue  # 源已完成/不在死锁环：真实释放会到来，不放松
+                        # 预测释放时刻：源该步骤粗排锚点 + CT；无锚点则退回 schedule_start
+                        _pred = schedule_start
+                        _ca = _dst.get("coarse_anchors") or []
+                        _src_flow = flow_map.get(_src_st["lot"].product_name) if _src_st else None
+                        _rel_idx = None
+                        _src_step_idx = None
+                        if _src_flow and _src_step:
+                            try:
+                                _src_step_idx = get_step_index_in_flow(_src_flow, _src_step)
+                            except ValueError:
+                                _src_step_idx = None
+                            if _src_step_idx is not None:
+                                _rel_idx = _src_step_idx - _src_cur_idx.get(_src_name, 0)
+                        if _rel_idx is not None and 0 <= _rel_idx < len(_ca) and _ca[_rel_idx] is not None:
+                            _ct2 = get_step_ct(ct_lookup, _src_flow[_src_step_idx].product_name,
+                                               _src_flow[_src_step_idx].step_number,
+                                               _src_st["lot"].qty)
+                            _pred = max(schedule_start, _ca[_rel_idx] + timedelta(minutes=_ct2))
+                        ref_release_times[_dname][_rk] = _pred
+                        pending_refs[_dname].discard(_rk)
+                        _relaxed = True
+                if _relaxed:
+                    logger.warning("死锁环已用预测释放打破: %s", blocked_names)
+                    # 重算各 lot 的 blocked ready_time，并清除已满足的 qtime 挂起
+                    for _n2, _s2 in lot_state.items():
+                        if not _s2["done"]:
+                            _update_blocked_ready_time(_n2, _s2, pending_refs, ref_release_times)
+                    for _n2, _s2 in lot_state.items():
+                        if _s2["done"] or not _s2.get("_qtime_hold"):
+                            continue
+                        if _s2["_qtime_hold"].isdisjoint(pending_refs.get(_n2, set())):
+                            _s2["_qtime_hold"] = None
+                    continue
                 logger.warning("所有未完成 Lot 均被 reference 阻塞，疑似死锁: %s", blocked_names)
                 break
 
@@ -4268,6 +4622,32 @@ def _run_schedule_pass(
                         best_eqp = eqp_id
 
         if best_eqp is None:
+            # 设备全忙 / 恒组批批次忙（busy_until）/ 并行上限未到释放时刻：
+            # 不能原地空转——把时钟推进到"本步骤候选设备"的最早可用未来时刻，
+            # 否则同一 ready lot 每轮被选却无法落步，主循环磨满 20 万轮（实测
+            # real1 的 UF-CURE 在 PKPOV001 批次忙时被无限重试，DISPENSE 做完 CURE 一直等）。
+            _wait_until = None
+            for _eid in eqp_ids:
+                _bs = eqp_batch_state.get(_eid)
+                if _bs is not None:
+                    _bu = _bs.get("busy_until")
+                    if _bu is not None and _bu > current_time:
+                        _wait_until = _bu if _wait_until is None else min(_wait_until, _bu)
+                    # 待凑批次尚未开炉（busy_until 未设）：等到 pending.start
+                    _pend = _bs.get("pending")
+                    if _pend is not None:
+                        _ps = _pend.get("start")
+                        if _ps is not None and _ps > current_time:
+                            _wait_until = _ps if _wait_until is None else min(_wait_until, _ps)
+                    for _aln, _aq, _aet in _bs.get("active", []):
+                        if _aet > current_time:
+                            _wait_until = _aet if _wait_until is None else min(_wait_until, _aet)
+                _ma = machine_available.get(_eid)
+                if _ma is not None and _ma > current_time:
+                    _wait_until = _ma if _wait_until is None else min(_wait_until, _ma)
+            if _wait_until is None:
+                _wait_until = current_time + timedelta(minutes=1)
+            current_time = _wait_until
             continue
 
         start_time = best_start
