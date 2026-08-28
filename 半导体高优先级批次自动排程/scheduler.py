@@ -3631,6 +3631,14 @@ def schedule(
             for t in machine_available.values():
                 if t > current_time and t < next_time:
                     next_time = t
+            if _os.environ.get("SCHED_DBG4") == "1" and datetime(2026,8,18,14,0) <= current_time <= datetime(2026,8,19,8,0):
+                _blk = {}
+                for _n in ("PC1","real1","PC2","real2"):
+                    _s = lot_state.get(_n)
+                    if _s and not _s["done"]:
+                        _st = _s["remaining_steps"][_s["step_index"]].step_name
+                        _blk[_n] = f"{_st}(idx={_s['step_index']},r={_s['ready_time'].strftime('%m/%d %H:%M')},hold={_s.get('_qtime_hold')},pend={sorted(pending_refs.get(_n,set()))})"
+                print(f"[DBG4] t={current_time.strftime('%m/%d %H:%M')} next_unblocked={next_time.strftime('%m/%d %H:%M') if next_time!=datetime.max else 'MAX'} | " + " | ".join(f"{k}:{v}" for k,v in _blk.items()), flush=True)
             if next_time == datetime.max:
                 break
             if next_time <= current_time:
@@ -3729,10 +3737,10 @@ def schedule(
                     for _i in range(1, _idx_end):
                         _crit.update(_steps_rem[_i].eqp_ids or [])
                     if _crit:
-                        for _os in lot_state.values():
-                            if _os is _dst:
+                        for _os_state in lot_state.values():
+                            if _os_state is _dst:
                                 continue
-                            for _tk in _os.get("qtime_tracker", {}).values():
+                            for _tk in _os_state.get("qtime_tracker", {}).values():
                                 if (_tk.get("start_step") == _q.start_step
                                         and _tk.get("end_step") == _q.end_step
                                         and _tk.get("deadline") is not None):
@@ -3750,6 +3758,14 @@ def schedule(
         not_deferred = [n for n in ready_lot_names if n not in deferred]
         # 优先排非 defer 的 lot；全 defer 时退化按原排序推进，保证不死锁
         pick_list = not_deferred if not_deferred else ready_lot_names
+        if os.environ.get("SCHED_DBG3") == "1" and datetime(2026, 8, 18, 12, 0) <= current_time <= datetime(2026, 8, 19, 8, 0):
+            _dbg = []
+            for _n in ("PC1", "real1", "PC2", "real2"):
+                _s = lot_state.get(_n)
+                if _s and not _s["done"]:
+                    _st = _s["remaining_steps"][_s["step_index"]].step_name
+                    _dbg.append(f"{_n}:{_st}({_s['step_index']})r={_s['ready_time'].strftime('%m/%d %H:%M')}hold={_s.get('_qtime_hold')}def={_n in deferred}")
+            print(f"[DBG3] t={current_time.strftime('%m/%d %H:%M')} ready={ready_lot_names} | " + " | ".join(_dbg), flush=True)
         name = pick_list[0]
         state = lot_state[name]
         lot = state["lot"]
@@ -4044,6 +4060,8 @@ def schedule(
             if state.get("refs_registered"):
                 _update_blocked_ready_time(name, state, pending_refs, ref_release_times)
 
+        if _os.environ.get("SCHED_DBG4") == "1" and end_time - current_time > timedelta(minutes=120) and current_time >= datetime(2026,8,18,14,0):
+            print(f"[DBG5] jump current={current_time.strftime('%m/%d %H:%M')} -> {end_time.strftime('%m/%d %H:%M')} by {name}:{step.step_name} eqp={best_eqp}", flush=True)
         current_time = max(current_time, end_time)
 
     # ---- 排程合理性智能检测（不改变结果，只告警） ----
