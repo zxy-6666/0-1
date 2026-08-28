@@ -1178,6 +1178,8 @@ def _compute_batch_slot(
     priority_wait_map: dict,
     wait_window: int = BATCH_WAIT_WINDOW,
     cur_time: Optional[datetime] = None,
+    machine_intervals: Optional[dict] = None,
+    special_eqp_map: Optional[dict] = None,
 ):
     """恒组批（together=true）批次槽位：计算当前 Lot 在"批次步骤"（如 CURE）的槽位。
 
@@ -1203,6 +1205,12 @@ def _compute_batch_slot(
         }
     bs = eqp_batch_state[batch_key]
     now = cur_time if cur_time is not None else ready_time
+    # 设备实际空闲时刻（上一批次结束时间）。若为 None 说明设备从未被本批次逻辑占用或
+    # 已空闲；若在 now 之前则上一批刚结束。open_time 用它与 ready_time 取 max 即可，
+    # 不能用全局 now：now 是调度器推进时钟，其它 Lot 的远未来锚点会把 now 抬到该 Lot
+    # 就绪之后数小时，若批次以 now 开炉会把本 Lot 的 Q-time 拉爆（实测 PC1 的 CURE
+    # 就绪 10:18、被 real1 的 PLASMA 锚点 17:56 拖到 18:03 才开炉超 Q 235min）。
+    _eqp_free = bs["busy_until"]
 
     # 清理：已结束的活跃 Lot（busy_until 过期清理放到 pending 判定之后）
     bs["active"] = [(ln, q, et) for ln, q, et in bs["active"] if et > now]
@@ -1239,9 +1247,24 @@ def _compute_batch_slot(
 
     # 开新批次：本批次最早开炉时刻 = max(本 Lot 就绪, 设备实际空闲时刻)。
     # 不能用纯 ready_time：等待中的 Lot（如 CURE 等上一批次结束）ready_time 仍是旧的，
-    # 若以它开新批次会落在上一批次运行期间（重叠超容量）。now 是调度器真实推进时间，
-    # 批次从 max(ready_time, now) 起才算设备真正空闲可开炉。
-    open_time = now if now > ready_time else ready_time
+    # 若以它开新批次会落在上一批次运行期间（重叠超容量）。busy_until 记录设备真实空闲
+    # 时刻（在 now 之前则上一批已结束、设备空闲），批次从 max(ready_time, busy_until)
+    # 起才算真正可用，且不受全局 now 抬升的影响。
+    open_time = ready_time if _eqp_free is None else max(ready_time, _eqp_free)
+
+    # 当前 lot 在本步的 Q-time 硬截止：恒组批凑批不得把本 lot 的批次开始推迟到截止之后
+    # （否则为等慢批次而牺牲本 lot 的 Q-time）。end_mod=track in 时 deadline 约束开始时间，
+    # track out 时约束结束时间 → 反推开始时间的上限。
+    hard_deadline = None
+    _cur_tracker = lot_state.get(lot.lot_name, {}).get("qtime_tracker", {})
+    for _tk in _cur_tracker.values():
+        if _tk.get("end_step") != step.step_name or _tk.get("deadline") is None:
+            continue
+        _em = (_tk.get("end_mod") or "track out").strip()
+        _limit = _tk["deadline"] if _em == "track in" else _tk["deadline"] - timedelta(minutes=ct)
+        if hard_deadline is None or _limit < hard_deadline:
+            hard_deadline = _limit
+
     _lot_suffix = step.step_name.split("-")[-1]
     _lot_stage = getattr(step, "stage_name", "")
     batch_start = open_time
@@ -1285,13 +1308,43 @@ def _compute_batch_slot(
                     other_eqp_ids = list(sls.special_eqp)
         if eqp_id not in other_eqp_ids:
             continue
-        # 估算该 Lot 到达目标步骤的时间（沿 remaining 累加 CT + 步间等待，忽略设备竞争）
+        # 估算该 Lot 到达目标步骤的时间（沿 remaining 累加 CT + 步间等待）。
+        # 设备感知：中间步骤按其设备的最早可用槽位推进（而非纯 ready+CT），否则会把
+        # 成员到达时间估得偏早（如 real2 的 DISPENSE 被 PKUFD001 排队 25min、PLASMA 被
+        # 排队 25min，纯 CT 估算的 CURE 到达比实际早 40min），导致批次过早开炉、
+        # 成员迟到错过同批而另等下一炉超 Q。
         est = other_state["ready_time"]
         for _s in other_remaining[other_idx:target_idx]:
             _sct = get_step_ct(ct_lookup, _s.product_name, _s.step_number, other_lot.qty)
             _swait = get_step_wait_time(other_lot.priority[0], other_lot.priority[1], priority_wait_map)
-            est += timedelta(minutes=_sct) + timedelta(minutes=_swait)
+            est += timedelta(minutes=_swait)
+            if machine_intervals and _s.eqp_ids and _s.eqp_ids != ["-"]:
+                _est_free = datetime.max
+                for _eid in _s.eqp_ids:
+                    if _eid in special_eqp_map and special_eqp_map[_eid].together:
+                        # 恒组批步骤：沿用当前批次设备的 pending 槽位（有则用，无则按就绪）
+                        _pe = eqp_batch_state.get(_eid, {}).get("pending")
+                        _cand = _pe["start"] if _pe and _pe.get("start") else est
+                    else:
+                        _cand = _find_earliest_slot(
+                            machine_intervals.get(_eid, []), est, timedelta(minutes=_sct))
+                    if _cand < _est_free:
+                        _est_free = _cand
+                if _est_free != datetime.max:
+                    est = _est_free
+            est += timedelta(minutes=_sct)
         if est > open_time + timedelta(minutes=wait_window):
+            continue
+        # 成员目标步骤的粗排程锚点（含引用/Q-time 约束，ref-aware）若远超窗口，
+        # 说明其"实际到达"无法在窗口内兑现（如被引用阻塞推到次日）——不得并入，
+        # 否则批次为该成员空等、把本 lot 的 Q-time 拉爆（PC2 的 CURE 锚点被 real2
+        # 引用推到次日，est 却按无约束估算给出当天时间）。
+        _oth_ca = other_state.get("coarse_anchors", [])
+        if _oth_ca and target_idx < len(_oth_ca) and _oth_ca[target_idx] is not None:
+            if _oth_ca[target_idx] > open_time + timedelta(minutes=wait_window):
+                continue
+        # 成员到达时间晚于本 lot 的 Q-time 截止：不得并入（否则批次被推迟到截止后）
+        if hard_deadline is not None and est > hard_deadline:
             continue
         if member_qty + other_lot.qty > spec.max_qty:
             continue
@@ -1299,6 +1352,13 @@ def _compute_batch_slot(
         members[other_name] = est
         if est > batch_start:
             batch_start = est
+
+    # Q-time 硬截止兜底：批次开始不晚于本 lot 的 Q-time 截止（仅当截止在 open_time 之后；
+    # 若截止早于 open_time，说明物理上已无法满足 Q-time，不得把批次压到 open_time 之前
+    # 造成与运行中批次重叠）。宁可本 lot 单开一炉，也不让凑批把它拖到超 Q。
+    if (hard_deadline is not None and open_time < hard_deadline
+            and batch_start > hard_deadline):
+        batch_start = hard_deadline
 
     # 记录待凑批次（含成员名单，供后续到达的成员加入同一批次）
     if members:
@@ -1814,8 +1874,34 @@ def _try_schedule_chain_forward(
                     if _offset > _chain_manual_offset:
                         _chain_manual_offset = _offset
         if _chain_manual_offset > 0:
-            state["ready_time"] = state["ready_time"] + timedelta(minutes=_chain_manual_offset)
-            state["_base_ready_time"] = state["ready_time"]
+            # 链首只需平移"宽松段吸收不掉"的残余延迟：被钉步骤之前的 Q-time 段若预算宽裕
+            # （如 BAKE→DISPENSE 1440min），其自然时长远小于预算，可吸收部分/全部手动延迟，
+            # 链首无需整体平移。否则会把链首人为推迟数小时、制造设备空窗并拖累引用该链的
+            # lot（实测 real1 的 UF-CURE 钉到 20:00 后，BAKE 被从 03:33 平移 12h 到 15:00，
+            # 导致 PC1 的 UF-DISPENSE 因引用 real1 的 BAKE 而推后、PLASMA→DISPENSE 超 Q）。
+            _absorb = 0.0
+            _pin_pos = _positions.get(_mstep)
+            if _pin_pos is not None:
+                for _q in (product_qtimes or []):
+                    _qs = _positions.get(_q.start_step)
+                    _qe = _positions.get(_q.end_step)
+                    if _qs is None or _qe is None or _qe > _pin_pos:
+                        continue
+                    _budget = _q.max_duration
+                    if _budget is None or _budget <= TIGHT_CHAIN_THRESHOLD:
+                        continue  # 紧段不吸收（保持链内紧凑，由链调度压实保 Q）
+                    _seg_nat = 0.0
+                    for _s2 in remaining:
+                        if _s2.step_name == _q.end_step:
+                            _end_ct = get_step_ct(ct_lookup, _s2.product_name,
+                                                  _s2.step_number, lot.qty)
+                            _seg_nat = _positions[_q.end_step] + _end_ct - _positions[_q.start_step]
+                            break
+                    _absorb += max(0.0, _budget - _seg_nat)
+            _chain_manual_offset = max(0.0, _chain_manual_offset - _absorb)
+            if _chain_manual_offset > 0:
+                state["ready_time"] = state["ready_time"] + timedelta(minutes=_chain_manual_offset)
+                state["_base_ready_time"] = state["ready_time"]
 
     # 找到链段在当前 lot 的 remaining_steps 中的范围
     chain_start_in_remaining = None
@@ -1965,7 +2051,7 @@ def _try_schedule_chain_forward(
                             eqp_id, lot, step, ct, ready_time, special_eqp_map[eqp_id],
                             lot_state, special_lot_step_lookup, ct_lookup,
                             eqp_batch_state, priority_wait_map,
-                            cur_time=cur_time)
+                            cur_time=cur_time, machine_intervals=machine_intervals, special_eqp_map=special_eqp_map)
                         if not can_use:
                             continue
                         check_time = adj_time
@@ -2268,7 +2354,7 @@ def _try_schedule_chain_forward(
                         eqp_id, lot, step, ct, ready_time, special_eqp_map[eqp_id],
                         lot_state, special_lot_step_lookup, ct_lookup,
                         eqp_batch_state, priority_wait_map,
-                        cur_time=cur_time)
+                        cur_time=cur_time, machine_intervals=machine_intervals, special_eqp_map=special_eqp_map)
                     if not can_use:
                         continue
                     avail = adj_time
@@ -2723,6 +2809,34 @@ def _coarse_earliest_anchors(
                 # 实测整条 FTF 链被推到未来 2 天（09/01 → 09/03）。FTF 链
                 # min_qtime=10080（7 天），链内间隙远小于预算，无需压实，
                 # MOUNT 保持在自然锚点（不再被动推迟）。
+                # 反向压实只作用于"紧 Q-time 段"（max_duration<=TIGHT_CHAIN_THRESHOLD
+                # 的规则覆盖的步骤）：merge 后 min_qtime 取的是链内最紧规则的值
+                # （如 UF 链 BAKE→DISPENSE 1440 / PLASMA→DISPENSE 240 / DISPENSE→CURE 240
+                # → min=240），但它只约束 DISPENSE→CURE 段，BAKE→DISPENSE 有 1440min 余量。
+                # 若把整条链都压成背靠背，会把链首（BAKE）人为推迟十多个小时、制造设备
+                # 空窗并拖累其它 lot 的就绪调度（实测 PC2 的 UF-BAKE 被从 08/18 12:58
+                # 推到 08/19 04:31，导致 PC1 的 UF-CURE 被饿死超 Q 813min）。
+                _tight_spans = []
+                for _q in (qtimes or []):
+                    if _q.product_name != lot.product_name:
+                        continue
+                    if _q.max_duration is None or _q.max_duration > TIGHT_CHAIN_THRESHOLD:
+                        continue
+                    _qs = None
+                    _qe = None
+                    for _j in range(n):
+                        _sn = lot_flow[cur_idx + s_rel + _j].step_name
+                        if _sn == _q.start_step and _qs is None:
+                            _qs = _j
+                        if _sn == _q.end_step:
+                            _qe = _j
+                    if _qs is not None and _qe is not None and _qs < _qe:
+                        _tight_spans.append((_qs, _qe))
+
+                def _pinnable(_k: int) -> bool:
+                    # 步骤 _k 是否处于某条紧 Q-time 规则覆盖区间内（start<=k<end）
+                    return any(_s <= _k < _e for _s, _e in _tight_spans)
+
                 pos = list(lst[s_rel:e_rel + 1])
                 # 1) 正向顺延：保证链内有序
                 for k in range(1, n):
@@ -2735,9 +2849,13 @@ def _coarse_earliest_anchors(
                 need_pull = (chain_budget > 0
                              and total_dur > chain_budget - QTIGHT_SAFETY_MARGIN)
                 # 3) 反向背靠背压实（仅当整链逼近预算上限时；后移只缩小链内间隙，
-                #    不违反任何规则，也不会把"钉晚"反向传导给链首）
+                #    不违反任何规则，也不会把"钉晚"反向传导给链首）。
+                #    只压实紧 Q-time 段内的步骤：宽松段（如 BAKE→DISPENSE 1440min）
+                #    保持自身锚点，避免人为推迟链首、浪费设备空窗。
                 if need_pull:
                     for k in range(n - 2, -1, -1):
+                        if not _pinnable(k):
+                            continue
                         bk = pos[k + 1] - timedelta(minutes=cts[k] + waits[k])
                         if bk > pos[k]:
                             pos[k] = bk
@@ -3646,7 +3764,27 @@ def schedule(
             # 有活跃 Q-time tracker 的 Lot 优先级提升
             has_active_qtime = len(state.get("qtime_tracker", {})) > 0
             qtime_boost = -1000 if has_active_qtime else 0
-            return (base_rank + qtime_boost, name)
+            # 当前步的粗排程锚点若远在未来（被引用/Q-time 链推到将来，如 PC2 的 PLASMA
+            # 因 DISPENSE 等 real2 的 BAKE 而被迫排到次日），则降优先级排在后面，
+            # 让当前时间点就能排的 lot 先走——否则这个"远未来步骤"会把 current_time 抬升
+            # 数小时，饿死其它已就绪且可立即排的 lot（实测 real1 的 UF 段因此被拖 17 小时）。
+            _anchor_pen = 0
+            _ca = state.get("coarse_anchors", [])
+            _si = state["step_index"]
+            if _ca and _si < len(_ca) and _ca[_si] is not None:
+                _diff_h = (_ca[_si] - current_time).total_seconds() / 3600.0
+                if _diff_h > 6.0:
+                    _anchor_pen = 2000
+            # 恒组批批次步骤（together=true，如 CURE）：会等凑批并把设备占用数小时，
+            # 若排在前面会把 current_time 大幅前推、饿死其它可立即排的 lot（实测 real2 的
+            # DISPENSE 因此被拖 6.7h 超 Q）。批次步骤降一级优先级，让非批次步骤先走。
+            _batch_pen = 0
+            _cur_step = state["remaining_steps"][_si]
+            if _cur_step.eqp_ids:
+                _batch_pen = 300 if any(
+                    e in special_eqp_map and special_eqp_map[e].together
+                    for e in _cur_step.eqp_ids) else 0
+            return (base_rank + qtime_boost + _anchor_pen + _batch_pen, name)
 
         ready_lot_names.sort(key=_ready_sort_key)
 
@@ -3661,6 +3799,16 @@ def schedule(
             _dst = lot_state[_dname]
             _dlt = _dst["lot"]
             _dsp = _dst["remaining_steps"][_dst["step_index"]]
+            # 当前步粗排程锚点远在未来（>3h，被引用/Q-time 推到将来）：本轮不选，
+            # 让当前时刻即可排/即将就绪的 lot 先走——否则该"远未来步骤"会把 current_time
+            # 抬升数小时，饿死其它就绪 lot（实测 real1 的 PLASMA 锚点被 CURE 手动延迟
+            # 推到 17:56，在 12:05 被选中后 end=18:03 直接跳过 PC1 的 CURE 就绪 10:18）。
+            _ca_d = _dst.get("coarse_anchors", [])
+            _csi = _dst["step_index"]
+            if _ca_d and _csi < len(_ca_d) and _ca_d[_csi] is not None:
+                if (_ca_d[_csi] - current_time).total_seconds() / 3600.0 > 6.0:
+                    deferred.add(_dname)
+                    continue
             _dpqs = qtime_by_product.get(_dlt.product_name, [])
             if not _dpqs:
                 continue
@@ -3729,10 +3877,10 @@ def schedule(
                     for _i in range(1, _idx_end):
                         _crit.update(_steps_rem[_i].eqp_ids or [])
                     if _crit:
-                        for _os in lot_state.values():
-                            if _os is _dst:
+                        for _os_state in lot_state.values():
+                            if _os_state is _dst:
                                 continue
-                            for _tk in _os.get("qtime_tracker", {}).values():
+                            for _tk in _os_state.get("qtime_tracker", {}).values():
                                 if (_tk.get("start_step") == _q.start_step
                                         and _tk.get("end_step") == _q.end_step
                                         and _tk.get("deadline") is not None):
@@ -3748,6 +3896,20 @@ def schedule(
                                           f"release={_earliest_release}")
                 break  # 任一 Q-time 不可行就 defer，不再看其他
         not_deferred = [n for n in ready_lot_names if n not in deferred]
+        if not not_deferred and deferred and ready_lot_names:
+            _next_ready = datetime.max
+            for _s2n, _s2 in lot_state.items():
+                if _s2["done"] or _s2.get("_qtime_hold"):
+                    continue
+                if _s2n in deferred:
+                    continue  # 远未来锚点，本轮不选，不作为推进目标
+                if _s2["ready_time"] <= current_time:
+                    continue  # 已就绪的 lot 不在推进目标内（它们在就绪队列里）
+                if _s2["ready_time"] < _next_ready:
+                    _next_ready = _s2["ready_time"]
+            if _next_ready < current_time + timedelta(hours=6):
+                current_time = max(current_time + timedelta(minutes=1), _next_ready)
+                continue
         # 优先排非 defer 的 lot；全 defer 时退化按原排序推进，保证不死锁
         pick_list = not_deferred if not_deferred else ready_lot_names
         name = pick_list[0]
@@ -3876,7 +4038,7 @@ def schedule(
                         eqp_id, lot, step, ct, ready, special_eqp_map[eqp_id],
                         lot_state, special_lot_step_lookup, ct_lookup,
                         eqp_batch_state, priority_wait_map,
-                        cur_time=current_time)
+                        cur_time=current_time, machine_intervals=machine_intervals, special_eqp_map=special_eqp_map)
                     if not can_use:
                         continue
                     avail = adj_time
@@ -4044,6 +4206,8 @@ def schedule(
             if state.get("refs_registered"):
                 _update_blocked_ready_time(name, state, pending_refs, ref_release_times)
 
+        if _os.environ.get("SCHED_DBG4") == "1" and end_time - current_time > timedelta(minutes=120) and current_time >= datetime(2026,8,18,14,0):
+            print(f"[DBG5] jump current={current_time.strftime('%m/%d %H:%M')} -> {end_time.strftime('%m/%d %H:%M')} by {name}:{step.step_name} eqp={best_eqp}", flush=True)
         current_time = max(current_time, end_time)
 
     # ---- 排程合理性智能检测（不改变结果，只告警） ----
