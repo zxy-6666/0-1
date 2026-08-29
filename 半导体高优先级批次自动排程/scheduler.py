@@ -618,6 +618,8 @@ def _tight_qtime_target_start(
     end_windows: dict = None,
     priority_wait_map: dict = None,
     ref_release_forecast: dict = None,
+    manual_adjust_lookup: dict = None,
+    pin_lookup: dict = None,
 ) -> object:
     """计算当前 step（作为某 Q-time 起点）应被延迟到的目标开始时间（最晚可行）。
 
@@ -712,6 +714,18 @@ def _tight_qtime_target_start(
         e_base = e_ready
         if ref_boost is not None and ref_boost > e_base:
             e_base = ref_boost
+        # E 的手动约束（pin/delay 是 E 的最早开始下界，不影响 S 之前的步骤）：
+        # 若不并入，前瞻会把 E 的可行开始估早（如 pin 把 DISPENSE 钉到 22:00，
+        # 实际被设备推到次日 09:30），导致安全站点 S（如 PLASMA）延迟不足、
+        # S→E 超 Q（test_pin_linkage pin PC2.UF-DISPENSE 场景根因）。
+        if manual_adjust_lookup:
+            _ma_e = manual_adjust_lookup.get((lot.lot_name, end_flow.step_name))
+            if _ma_e is not None and _ma_e > e_base:
+                e_base = _ma_e
+        if pin_lookup:
+            _pn_e = pin_lookup.get((lot.lot_name, end_flow.step_name))
+            if _pn_e is not None and _pn_e > e_base:
+                e_base = _pn_e
 
         # ---- E 的设备最早可用时间 + 约束解析 ----
         e_ct = get_step_ct(ct_lookup, end_flow.product_name, end_flow.step_number, lot.qty)
@@ -1707,6 +1721,96 @@ def _precompute_whole_chain_block(
         return None
     chain_start = _init_cs
 
+    # ---- 正向贪心优先（安全站点模型）：链内步骤尽早做，Q-time 达标即采用 ----
+    # 用户规则：做完当前站点就该继续往下做（机台空闲即做），不要为了后端步骤
+    # 倒着排导致前面设备空闲而没做。先沿链正向逐步骤贪心找最早槽位：
+    #   - 每步从 max(上一步结束+步间等待, 该步硬性下界) 起找最早可行槽位；
+    #   - 链内 Q-time 全部达标且步骤顺序合法 → 直接采用（所有步骤尽量早开始）；
+    #   - 不达标（紧链/设备竞争挤散）→ 回退下方"倒排 + 整链后移"保底（紧凑不超 Q）。
+    # 这样宽松预算（如 10080min 的 FTF 段）不再被倒排整体推迟，中间步骤做完即走。
+    _g_sim = {k: list(v) for k, v in machine_intervals.items()}
+    _g_avail = dict(machine_available)
+    _g_ok = True
+    _g_starts: list = [None] * n
+    _g_ends: list = [None] * n
+    _g_eqps: list = [None] * n
+    # pending reference 检查：链内步骤被"尚未释放且无预测锚点"的引用阻塞时，不能贪心
+    # 早做（释放时刻未知，可能早于真实释放 → reference 违背），放弃正向贪心回退原逻辑。
+    for _k in range(n):
+        _i, _s = steps[_k]
+        for _rk, _bix in (ref_block_info or {}).items():
+            if _bix is None or _i < _bix:
+                continue
+            _relv = (ref_release_times.get(lot.lot_name, {}).get(_rk) or FAR_FUTURE)
+            if _relv == FAR_FUTURE:
+                if ref_release_forecast and _rk in ref_release_forecast:
+                    continue  # 有预测锚点：可用预测时刻做下界
+                if _rk in (pending_refs or set()):
+                    _g_ok = False
+                    break
+        if not _g_ok:
+            break
+    if _g_ok:
+        for _k in range(n):
+            _i, _s = steps[_k]
+            _ct = cts[_k]
+            _lb = lower_bounds.get(_i)
+            if _k == 0:
+                _base = chain_start
+                if _lb is not None and _lb > _base:
+                    _base = _lb
+            else:
+                _base = _g_ends[_k - 1] + timedelta(minutes=step_wait)
+                if _lb is not None and _lb > _base:
+                    _base = _lb
+            if _s.eqp_ids:
+                _cands = []
+                for _e in _s.eqp_ids:
+                    _st = _find_earliest_slot(_g_sim.get(_e, []), _base, timedelta(minutes=_ct))
+                    if _st == datetime.max:
+                        continue
+                    _st = _resolve_constraints(_st, _ct, _e, _g_sim, shift_change_intervals,
+                                               step_windows, end_windows, _s.step_name, resolve_max_iterations)
+                    if _st == datetime.max:
+                        continue
+                    _cands.append((_st, _e))
+                if not _cands:
+                    _g_ok = False
+                    break
+                _cands.sort(key=lambda x: (x[0], _g_avail.get(x[1], datetime.min)))
+                _st, _e = _cands[0]
+            else:
+                _st = _resolve_constraints(_base, _ct, "-", _g_sim, shift_change_intervals,
+                                           step_windows, end_windows, _s.step_name, resolve_max_iterations)
+                if _st == datetime.max:
+                    _g_ok = False
+                    break
+                _e = "-"
+            _g_starts[_k], _g_ends[_k], _g_eqps[_k] = _st, _st + timedelta(minutes=_ct), _e
+            _g_avail[_e] = _g_ends[_k]
+            _g_sim.setdefault(_e, []).append((_st, _g_ends[_k]))
+    if _g_ok:
+        for _k in range(n - 1):
+            if _g_starts[_k + 1] < _g_ends[_k]:
+                _g_ok = False
+                break
+    if _g_ok:
+        for _q in chain_qs:
+            _qk = _chain_step_pos(names, _q.start_step)
+            _qe = _chain_step_pos(names, _q.end_step)
+            if _qk is None or _qe is None:
+                continue
+            _qas = _g_starts[_qk] if (_q.start_mod or "track in").strip() == "track in" else _g_ends[_qk]
+            _qae = _g_starts[_qe] if (_q.end_mod or "track out").strip() == "track in" else _g_ends[_qe]
+            if (_qae - _qas).total_seconds() / 60.0 > _q.max_duration:
+                _g_ok = False
+                break
+    if _g_ok:
+        _gplan = {}
+        for _k, (_i, _s) in enumerate(steps):
+            _gplan[_i] = (_g_eqps[_k], _g_starts[_k], _g_ends[_k])
+        return _gplan
+
     # ---- 迭代：向后倒排 + 整链后移，直至 Q-time 达标或无法再推迟 ----
     for _iter in range(12):
         # 每轮重置模拟状态（基于当前真实机器状态的副本 + 链自身占用）
@@ -2542,7 +2646,8 @@ def _try_schedule_chain_forward(
                 machine_available, machine_intervals,
                 pending_refs, ref_release_times, special_lot_step_lookup, ct_lookup,
                 shift_change_intervals, step_windows, end_windows, priority_wait_map,
-                state.get("ref_release_forecast"))
+                state.get("ref_release_forecast"),
+                manual_adjust_lookup=manual_adjust_lookup, pin_lookup=pin_lookup)
             if isinstance(qh, tuple) and qh[0] == "DEFER":
                 # 端步骤 reference 未释放：推迟整个链，交给单步调度处理
                 return False, scheduled_count
@@ -3104,8 +3209,7 @@ def _detect_schedule_anomalies(
     识别以下不合理情形（不改变排程结果，只做告警）：
     1. lot_constraints 存在引用环（A↔B 互相等待）——互相等待可能被迭代无限推迟；
     2. 引用环雪崩已发生并被"自然锚点回退"自动打破（粗排程 60 轮未收敛）；
-    3. 同一 lot 相邻步骤之间出现异常等待间隙（远超 CT+wait，如
-       "MOUNT 09:40 → FTF 17:59"——正是循环引用雪崩/设备竞争拖链的典型症状）。
+    3. 引用步骤在源流程中不存在（数据错误 → 引用永不释放 → 必然死锁）。
     """
     warnings: list[str] = []
 
@@ -3146,14 +3250,8 @@ def _detect_schedule_anomalies(
                 f"引用环雪崩已发生：{', '.join(names)} 的相互等待导致锚点被无限推迟，"
                 "已自动采用'自然就绪时刻'回退打破雪崩（结果按各 lot 自身最早可达时间排程）。")
 
-    # ---- 3. 相邻步骤异常等待间隙（最终排程级） ----
-    lot_entries: dict[str, list] = {}
-    for e in le:
-        lot_entries.setdefault(e.lot_name, []).append(e)
-
+    # ---- 3. 引用步骤在源流程中不存在（数据错误 → 引用永不释放 → 必然死锁） ----
     lot_by_name = {l.lot_name: l for l in lots}
-
-    # ---- 3.0 引用步骤在源流程中不存在（数据错误 → 引用永不释放 → 必然死锁） ----
     _missing_ref_steps: list[str] = []
     for _lot in lots:
         for _r in _lot.references or []:
@@ -3172,42 +3270,6 @@ def _detect_schedule_anomalies(
                     "该引用永远不会释放，相关 lot 将被永久阻塞")
     if _missing_ref_steps:
         warnings.append("引用配置错误：" + "；".join(_missing_ref_steps[:3]))
-    for ln, entries in lot_entries.items():
-        lot = lot_by_name.get(ln)
-        if lot is None:
-            continue
-        pf = flow_map.get(lot.product_name)
-        if not pf:
-            continue
-        try:
-            cur_idx = get_step_index_in_flow(pf, lot.current_step_name)
-        except ValueError:
-            cur_idx = 0
-        step_idx = {s.step_name: i for i, s in enumerate(pf)}
-        # 按流程顺序排列已排步骤
-        ordered = sorted(
-            [e for e in entries if e.step_name in step_idx and step_idx[e.step_name] >= cur_idx],
-            key=lambda e: step_idx[e.step_name])
-        wait = get_step_wait_time(lot.priority[0], lot.priority[1], priority_wait_map)
-        gap_warns: list[tuple[float, str]] = []
-        for a, b in zip(ordered, ordered[1:]):
-            i_a = step_idx[a.step_name]
-            i_b = step_idx[b.step_name]
-            if i_b != i_a + 1:
-                continue  # 中间还有未排步骤（如跳过检查站），不适用相邻间隙判定
-            step_obj = pf[i_a]
-            ct = get_step_ct(ct_lookup, step_obj.product_name, step_obj.step_number, lot.qty)
-            expected = ct + wait
-            actual_min = (b.start_time - a.end_time).total_seconds() / 60.0
-            if actual_min > max(240.0, expected * 5.0):
-                gap_warns.append((actual_min,
-                    f"异常间隙：{ln} 的 {a.step_name}（{a.start_time:%m/%d %H:%M} 完成）"
-                    f"与下一站 {b.step_name}（{b.start_time:%m/%d %H:%M} 才开始）"
-                    f"间隔 {actual_min:.0f} 分钟，远超预期约 {expected:.0f} 分钟"
-                    "——请核查是否被引用环/设备冲突不合理拖后。"))
-        # 每 lot 最多报 3 条最严重的间隙告警，避免刷屏
-        for _g, _msg in sorted(gap_warns, reverse=True)[:3]:
-            warnings.append(_msg)
     return warnings
 
 
@@ -4666,7 +4728,8 @@ def _run_schedule_pass(
                 machine_available, machine_intervals,
                 pending_refs, ref_release_times, special_lot_step_lookup, ct_lookup,
                 shift_change_intervals, step_windows_expanded, end_windows_expanded,
-                priority_wait_map, state.get("ref_release_forecast"))
+                priority_wait_map, state.get("ref_release_forecast"),
+                manual_adjust_lookup=manual_adjust_lookup, pin_lookup=pin_lookup)
             if isinstance(qh, tuple) and qh[0] == "DEFER":
                 # 端步骤 reference 未释放，暂不能调度：挂起本 lot，等待释放
                 state["_qtime_hold"] = set(qh[1])
