@@ -137,6 +137,10 @@ def validate_schedule(
         ref_errors = _check_references(lot_entries, lot_constraints, shift_times)
         errors.extend(ref_errors)
 
+    # ---- 4b. lead 终检（闸A：lot2.step2 不得早于 lot1.step1 完成） ----
+    _lead_errors = _check_lead(lot_entries, lots)
+    errors.extend(_lead_errors)
+
     # ---- 5. 缺失步骤 ----
     flow_map: dict[str, list] = {}
     for f in flows:
@@ -230,6 +234,30 @@ def _check_references(
             errors.append(
                 f"reference 违背: {c.lot_name}.{start_step} 开始 {dep_entry.start_time} "
                 f"早于 {c.reference_lot}.{c.reference_step} 释放 {release}")
+    return errors
+
+
+def _check_lead(
+    lot_entries: list[ScheduleEntry],
+    lots: list[Lot],
+) -> list[str]:
+    """lead 终检：闸A——lot2(配套).step2 不得早于 lot1(领导).step1 完成。
+
+    逐 Q 不超已由 validate_schedule 第 3 步（_check_qtime_from_entries 全量重算）覆盖，
+    此处只补闸A 的硬性违背检查。
+    """
+    errors: list[str] = []
+    by_lot_step = {(e.lot_name, e.step_name): e for e in lot_entries}
+    for lot in lots:
+        for lp in lot.lead_pairs or []:
+            e1 = by_lot_step.get((lp.lot1, lp.step1))
+            e2 = by_lot_step.get((lp.lot2, lp.step2))
+            if e1 is None or e2 is None:
+                continue
+            if e2.start_time < e1.end_time:
+                errors.append(
+                    f"lead 违背(闸A): {lp.lot2}.{lp.step2} 开始 {e2.start_time} "
+                    f"早于领导批 {lp.lot1}.{lp.step1} 完成 {e1.end_time}")
     return errors
 
 

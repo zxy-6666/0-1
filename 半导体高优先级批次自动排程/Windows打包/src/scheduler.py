@@ -3217,7 +3217,7 @@ def _detect_schedule_anomalies(
     ref_graph: dict[str, set[str]] = {}
     for lot in lots:
         for r in lot.references or []:
-            if r.reference_lot and r.start_step:
+            if r.reference_lot and r.start_step and not r.lead_id:  # lead 内部边不进引用环
                 ref_graph.setdefault(lot.lot_name, set()).add(r.reference_lot)
     _visited: set[str] = set()
     _stack: list[str] = []
@@ -3270,6 +3270,13 @@ def _detect_schedule_anomalies(
                     "该引用永远不会释放，相关 lot 将被永久阻塞")
     if _missing_ref_steps:
         warnings.append("引用配置错误：" + "；".join(_missing_ref_steps[:3]))
+
+    # ---- 4. lead 数据体检（成环/异构/热启动，设计文档 §3.2） ----
+    try:
+        from data_loader import health_check_lead
+        warnings.extend(health_check_lead(lots, flow_map))
+    except Exception:  # 体检失败不影响排程结果
+        pass
     return warnings
 
 
@@ -3634,6 +3641,105 @@ def _try_schedule_chain_reverse(
 # 主调度函数
 # ============================================================
 
+def _lead_back_shift(
+    lots: list[Lot],
+    lot_entries: list[ScheduleEntry],
+    eqp_entries: list[EqpScheduleEntry],
+    flows: list[FlowStep],
+    window_end: datetime,
+) -> tuple[list[ScheduleEntry], list[EqpScheduleEntry]]:
+    """lead 背靠背回拉（back-shift alignment，设计文档 §4.2 / §5.3 Pass B）。
+
+    对每条 lead (lot1.step1, lot2.step2)：若 lot1.step1 完成后与 lot2.step2 开始之间
+    存在空闲带（lot1 提前做完、在紧 Q 链入口前空等），则把 lot1 的全部已排步骤整体
+    顺延，使 lot1.step1.end 贴近 lot2.step2.start（背靠背）。
+
+    整批统一顺延 → lot1 内部相邻步骤与各 Q-time 间隔原样保留（不新增 Q 风险），
+    "空闲等待"被推迟到紧 Q 计时尚未启动的位置。只校验：
+      1. 顺延后的 lot1 各设备占用不与其它批次占用冲突；
+      2. 不越过排程窗口末端。
+    无可优化 lead / 已背靠背 / 顺延与设备冲突时，该 lead 保持原样（软退化为最小间隙）。
+
+    注意：某 lot 同时是某 lead 的 lot1 又是另一 lead 的 lot2 时，按声明顺序依次处理，
+    先到者的结果被后到者看到（load_loader 已归组，顺序确定、可复现）。
+    """
+    lead_pairs = [lp for lot in lots for lp in (lot.lead_pairs or [])]
+    if not lead_pairs or not lot_entries:
+        return lot_entries, eqp_entries
+
+    lot_by_name = {l.lot_name: l for l in lots}
+    le = list(lot_entries)
+    ee = list(eqp_entries)
+
+    # lot -> step -> entry
+    by_lot_step: dict[str, dict[str, ScheduleEntry]] = {}
+    for e in le:
+        by_lot_step.setdefault(e.lot_name, {})[e.step_name] = e
+
+    # flow 内步骤顺序（用于稳定排序 lot1 步骤、判定 step1 是否可排）
+    flow_map = get_product_flow_map(flows)
+    _flow_order: dict[str, dict[str, int]] = {}
+    for _p, _fs in flow_map.items():
+        _flow_order[_p] = {s.step_name: i for i, s in enumerate(_fs)}
+
+    def _other_intervals(_lot1: str) -> dict:
+        d: dict[str, list] = {}
+        for e in ee:
+            if e.eqp_id == "-" or e.lot_name == _lot1:
+                continue
+            d.setdefault(e.eqp_id, []).append((e.start_time, e.end_time))
+        return d
+
+    def _shift_ok(lot1_entries: list, shift_d: timedelta, other_int: dict) -> bool:
+        for e in lot1_entries:
+            if e.eqp_id == "-":
+                continue
+            ns, ne = e.start_time + shift_d, e.end_time + shift_d
+            for (os_, oe_) in other_int.get(e.eqp_id, []):
+                if ns < oe_ and os_ < ne:      # 区间重叠
+                    return False
+            if ne > window_end:
+                return False
+        return True
+
+    for lp in lead_pairs:
+        lot1 = lot_by_name.get(lp.lot1)
+        if not lot1:
+            continue
+        e1 = by_lot_step.get(lp.lot1, {}).get(lp.step1)
+        e2 = by_lot_step.get(lp.lot2, {}).get(lp.step2)
+        if e1 is None or e2 is None:
+            continue
+        # 闸A 必须以实际排程为准；此处只做"背靠背"顺延（lot2 不可早于 lot1 由闸A保证）
+        gap_min = (e2.start_time - e1.end_time).total_seconds() / 60.0
+        if gap_min < 2.0:
+            continue                            # 已背靠背（差距≤2min）或 lot1 更迟
+        if not lot1.lead_pairs:
+            continue
+        # lot1 已排步骤，按 flow 顺序稳定排序（step1 必须在其流程内）
+        _ord = _flow_order.get(lot1.product_name, {})
+        if lp.step1 not in _ord:
+            continue
+        lot1_es = [e for e in le if e.lot_name == lp.lot1 and e.step_name in _ord]
+        lot1_es.sort(key=lambda x: _ord[x.step_name])
+        if len(lot1_es) < 1:
+            continue
+        other = _other_intervals(lp.lot1)
+        shift_d = timedelta(minutes=gap_min)
+        if not _shift_ok(lot1_es, shift_d, other):
+            continue                            # 顺延与设备冲突 → 软退化，保持最小间隙
+        # 提交：lot1 全部已排步骤与设备条目统一顺延
+        for e in le:
+            if e.lot_name == lp.lot1:
+                e.start_time = e.start_time + shift_d
+                e.end_time = e.end_time + shift_d
+        for e in ee:
+            if e.lot_name == lp.lot1:
+                e.start_time = e.start_time + shift_d
+                e.end_time = e.end_time + shift_d
+    return le, ee
+
+
 def schedule(
     lots: list[Lot],
     flows: list[FlowStep],
@@ -3732,8 +3838,20 @@ def schedule(
     _o1 = sum(getattr(a, "over_minutes", 0) for a in _qa1 if a.status != "OK")
     _o2 = sum(getattr(a, "over_minutes", 0) for a in _qa2 if a.status != "OK")
     if (_m1, _r1, _n1, _o1) <= (_m2, _r2, _n2, _o2):
-        return _le1, _ee1, _qa1
-    return _le2, _ee2, _qa2
+        _best_le, _best_ee, _best_qa = _le1, _ee1, _qa1
+    else:
+        _best_le, _best_ee, _best_qa = _le2, _ee2, _qa2
+    # ---- lead 背靠背回拉（Pass B：把 lot1 顺延贴齐 lot2.step2.start）----
+    _win = datetime.min
+    for _e in _best_le:
+        if _e.end_time > _win:
+            _win = _e.end_time
+    if _win == datetime.min:
+        _win = datetime.now()
+    _best_le, _best_ee = _lead_back_shift(
+        lots=_orig_lots, lot_entries=_best_le, eqp_entries=_best_ee,
+        flows=flows, window_end=_win + timedelta(days=2))
+    return _best_le, _best_ee, _best_qa
 
 
 def _run_schedule_pass(

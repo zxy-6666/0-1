@@ -374,7 +374,7 @@
 | `lot_name`                | 被约束的批次                                                        |
 | `reference_lot`           | 参照批次（等谁）                                                      |
 | `reference_step`          | 参照批次的步骤（等到它做完）                                                |
-| `start_mod`               | 偏移：空/0=无；`0.5`/`1`/`2`/`4`=几小时后；`shift`=下一班次；`shift_day`=下一白班 |
+| `start_mod`               | 偏移：空/0=无；`0.5`/`1`/`2`/`4`=几小时后；`shift`=下一班次；`shift_day`=下一白班；`lead`=领导衔接（见下方"lead 领导衔接"） |
 | `start_step`              | 被约束批次从哪一步开始等                                                  |
 | `hold_period_N_start/end` | 可选的"扣留时段"（强制该批在某时段不可动）                                        |
 
@@ -386,6 +386,17 @@
 | real1 | PC1 | A005-P1-UF-DISPENSE | 0 | A005-R1-UF-DISPENSE | | |
 
 解读：批次 `real1` 的 `A005-R1-FC-REFLOW` 这一步，必须等参照批 `PC1` 的 `A005-P1-FC-REFLOW` 完成后才能开始（start\_mod=0，无偏移）；同理它的 `A005-R1-UF-DISPENSE` 要等 `PC1` 的 `A005-P1-UF-DISPENSE`。
+
+**lead 领导衔接（`start_mod=lead`，五列关系声明）**
+
+在少数关键 step 上，让**领导批 lot1** 的 `step1` 做完后，**配套批 lot2** 的 `step2` **背靠背紧跟着做**（lot1 恒领先），且全程不超任何区间 Q-time、不在运行中的紧 Q 窗口内空等。一行声明复用原五列（列名不变，只是语义按"关系声明"理解）：
+
+| lot1 (`lot_name`) | step1 (`start_step`) | lot2 (`reference_lot`) | step2 (`reference_step`) | mod (`start_mod`) |
+| -------- | -------- | -------- | -------- | -------- |
+| real1 | A005-R1-UF-DISPENSE | PC1 | A005-D1-UF-DISPENSE | lead |
+
+含义：`PC1` 的 `A005-D1-UF-DISPENSE` **尾随** `real1` 的 `A005-R1-UF-DISPENSE`（`PC1` 不早于 `real1` 做完该步）。若 `real1` 的 `step1` 前后有多段连续 Q-time（如 UF-BAKE→PLASMA→DISPENSE→CURE），系统会以 `PC1` 该步开始时刻为锚，把 `real1` 上游链**按 Q 回拉对齐**——`real1` 不会提前做完停在 `DISPENSE` 前空等超 Q，而是整条链顺流与配套批相接。
+- 数据体检：`lot1`/`lot2` 必须在批次表存在、流程必须含对应衔接步、lead 与普通引用不得成环；`lot1` 热启动太靠后（已越过 step1）时对 lot1 侧回拉失效并标注。
 
 ***
 

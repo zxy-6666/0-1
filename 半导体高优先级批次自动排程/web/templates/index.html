@@ -457,7 +457,8 @@ const DROPDOWN_COLUMNS = {
     'day': { type: 'select', options: [['-1', '每天'], ['1', '周一'], ['2', '周二'], ['3', '周三'], ['4', '周四'], ['5', '周五'], ['6', '周六'], ['7', '周日']] }
   },
   'lot_constraints.csv': {
-    'start_mod': { type: 'datalist', options: [['', '无偏移'], ['0.5', '0.5小时'], ['1', '1小时'], ['2', '2小时'], ['4', '4小时'], ['shift', 'shift（下一班次）'], ['shift_day', 'shift_day（下一白班）']] }
+    // mod 含义（设计文档 §3.1）：空=普通引用；N=偏移N小时；shift/shift_day=下个班次/白班；lead=领导衔接
+    'start_mod': { type: 'datalist', options: [['', '无偏移（普通引用）'], ['0.5', '0.5小时'], ['1', '1小时'], ['2', '2小时'], ['4', '4小时'], ['shift', 'shift（下一班次）'], ['shift_day', 'shift_day（下一白班）'], ['lead', 'lead（领导衔接，lot2.step2背靠背尾随lot1.step1）']] }
   },
   'lot_list.csv': {
     'lot_state': { type: 'select', options: [['', '空闲'], ['wait', 'wait（等待）'], ['running', 'running（运行中）'], ['hold', 'hold（挂起）']] },

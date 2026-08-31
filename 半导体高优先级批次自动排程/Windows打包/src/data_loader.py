@@ -3,9 +3,13 @@ import os
 import pandas as pd
 from datetime import datetime
 from typing import Optional
-from models import Lot, LotConstraint, EqpConstraint, FlowStep, StepCT, QTimeConstraint, SpecialLotStep, StepTimeWindow, ShiftChangeTime, ShiftConfig, ManualAdjust, SpecialEqp
+from models import Lot, LotConstraint, LeadPair, EqpConstraint, FlowStep, StepCT, QTimeConstraint, SpecialLotStep, StepTimeWindow, ShiftChangeTime, ShiftConfig, ManualAdjust, SpecialEqp
 
 DATETIME_FORMAT = "%Y/%m/%d %H:%M"
+
+# 由 load_lot_constraints 收集的 lead 关系（每次加载时清除并重建）。
+# lead 是"lot2.step2 尾随 lot1.step1"的关系声明，见 LeadPair 与 lead 设计文档。
+LEAD_PAIRS: list[LeadPair] = []
 
 
 def _read_csv(filepath: str, sep: str = "\t") -> pd.DataFrame:
@@ -73,29 +77,62 @@ def _safe_str(row, col: str, default: str = "") -> str:
 
 
 def load_lot_constraints(filepath: str) -> list[LotConstraint]:
-    """加载 lot_constraints.csv，支持多段 hold_period（动态列）
-    格式: lot_name, reference_lot, reference_step, start_mod, start_step, hold_period_1_start, hold_period_1_end, ...
+    """加载 lot_constraints.csv。
+
+    基本格式（普通引用/偏移）：lot_name | start_step | reference_lot | reference_step | start_mod
+      语义：lot_name 的 start_step 在 reference_lot 的 reference_step 完成后才释放（可加偏移）。
+
+    lead 格式（五列声明，mod=lead）：lot1 | step1 | lot2 | step2 | mod
+      通过同列的字段承载：lot_name=lot1(领导批), start_step=step1,
+      reference_lot=lot2(配套批), reference_step=step2, start_mod=lead。
+      含义：lot2.step2 尾随 lot1.step1（背靠背），lot1 上游链按 Q-time 回拉对齐。
+      加载时自动生成：
+        - 闸A 内部引用边（挂到配套批 lot2）：lot2.step2 在 lot1.step1 完成之后才能开始，
+          带 lead_id 标记（环检测/死锁判定跳过）。
+        - LeadPair 记录（供回拉与终检使用）。
+
+    另：兼容解析 hold_period_N_start/end 多段扣留时段（活跃功能，保留）。
     """
+    global LEAD_PAIRS
+    LEAD_PAIRS = []
     df = _read_csv(filepath)
     constraints = []
     col_names = list(df.columns)
+    lead_idx = 0
     for _, row in df.iterrows():
         lot_name = _safe_str(row, "lot_name")
         if not lot_name:
             continue
 
-        reference_lot = _safe_str(row, "reference_lot")
-        if not reference_lot:
-            reference_lot = None
-        reference_step = _safe_str(row, "reference_step")
-        if not reference_step:
-            reference_step = None
         start_mod = _safe_str(row, "start_mod")
-        if not start_mod:
-            start_mod = None
         start_step = _safe_str(row, "start_step")
-        if not start_step:
-            start_step = None
+        reference_lot = _safe_str(row, "reference_lot")
+        reference_step = _safe_str(row, "reference_step")
+
+        if (start_mod or "").strip() == "lead":
+            # lead 声明：lot_name=lot1(领导), start_step=step1,
+            #           reference_lot=lot2(配套), reference_step=step2
+            if reference_lot and reference_step and start_step:
+                lead_id = f"lead{lead_idx}"; lead_idx += 1
+                # 闸A：配套批 lot2 等 领导批 lot1.step1 完成之后才释放 lot2.step2
+                constraints.append(LotConstraint(
+                    lot_name=reference_lot,      # lot2（配套）
+                    reference_lot=lot_name,      # 等 lot1（领导）
+                    reference_step=start_step,   # lot1 的 step1
+                    start_mod=None,              # 空 mod = lot1.step1 完成时刻之后释放
+                    start_step=reference_step,   # lot2 的 step2
+                    lead_id=lead_id,
+                ))
+                LEAD_PAIRS.append(LeadPair(
+                    lot1=lot_name, step1=start_step,
+                    lot2=reference_lot, step2=reference_step,
+                    lead_id=lead_id))
+            continue  # lead 行本身不产生普通引用条目
+
+        reference_lot = reference_lot or None
+        reference_step = reference_step or None
+        start_mod = start_mod or None
+        start_step = start_step or None
 
         # 解析 hold_periods: 多列对 hold_period_N_start, hold_period_N_end
         hold_periods = []
@@ -127,6 +164,11 @@ def load_lot_list(filepath: str, constraints_filepath: Optional[str] = None) -> 
     all_constraints = []
     if constraints_filepath:
         all_constraints = load_lot_constraints(constraints_filepath)
+
+    # lead 关系按领导批 lot1 归组（供回拉与终检）
+    lead_pairs_by_lot1: dict[str, list[LeadPair]] = {}
+    for _lp in LEAD_PAIRS:
+        lead_pairs_by_lot1.setdefault(_lp.lot1, []).append(_lp)
 
     # 按 lot_name 分组约束
     constraints_by_lot: dict[str, list[LotConstraint]] = {}
@@ -178,6 +220,7 @@ def load_lot_list(filepath: str, constraints_filepath: Optional[str] = None) -> 
             lot_state=_safe_str(row, "lot_state"),
             running_time=_safe_int(row, "running_time"),
             references=references,
+            lead_pairs=lead_pairs_by_lot1.get(lot_name, []),
             start_time=merged_start_time,
             start_step=None,  # per-reference start_step 在每个 reference 中
             hold_periods=merged_hold_periods,
@@ -464,6 +507,115 @@ def get_step_index_in_flow(flow_steps: list[FlowStep], step_name: str) -> int:
         if step.step_name == step_name:
             return i
     raise ValueError(f"未在 flow 中找到步骤: {step_name}")
+
+
+def health_check_lead(lots: list[Lot], flow_map: dict[str, list[FlowStep]]) -> list[str]:
+    """lead 数据体检（设计文档 §3.2），返回人类可读的违规/标注列表（空=通过）。
+
+    检查项：
+    1. 存在性：lead 的 lot1（领导批）、lot2（配套批）都必须在 lot_list 中。
+    2. 流程异构：step1 必须在 lot1 流程、step2 必须在 lot2 流程。
+    3. 成环：lead 边（lot2→lot1，配套依赖领导）与普通引用边（lot→reference_lot）
+       构成的有向图不得成环（A 等 B 且 B 等 A）。lead 内部边（即闸A 那一条，
+       带 lead_id、挂在 lot2 上）已在 _detect_schedule_anomalies 的引用环中跳过，
+       这里同样不把带 lead_id 的引用计入。
+    4. 热启动太靠后：lot1 当前已排在 step1 之后 → lead 对 lot1 侧回拉失效，
+       仅保留闸A（lot2.step2 不早于 lot1.step1 完成），结果标注。
+    """
+    warns: list[str] = []
+    lot_by_name = {l.lot_name: l for l in lots}
+    lead_pairs = [lp for lot in lots for lp in (lot.lead_pairs or [])]
+    if not lead_pairs:
+        return warns
+
+    # ---- 1. 存在性 ----
+    for lp in lead_pairs:
+        if lp.lot1 not in lot_by_name:
+            warns.append(
+                f"lead 数据体检：领导批 {lp.lot1} 在 lot_list 中不存在，"
+                f"lead（{lp.lot2}.{lp.step2} 尾随 {lp.lot1}.{lp.step1}）失效")
+        if lp.lot2 not in lot_by_name:
+            warns.append(
+                f"lead 数据体检：配套批 {lp.lot2} 在 lot_list 中不存在，"
+                f"lead（{lp.lot2}.{lp.step2} 尾随 {lp.lot1}.{lp.step1}）失效")
+
+    # ---- 2. 流程异构 ----
+    for lp in lead_pairs:
+        lot1 = lot_by_name.get(lp.lot1)
+        lot2 = lot_by_name.get(lp.lot2)
+        if lot1:
+            f1 = flow_map.get(lot1.product_name) or []
+            if not any(s.step_name == lp.step1 for s in f1):
+                warns.append(
+                    f"lead 数据体检：{lp.lot1} 的流程 {lot1.product_name} 中不存在衔接步 {lp.step1}")
+        if lot2:
+            f2 = flow_map.get(lot2.product_name) or []
+            if not any(s.step_name == lp.step2 for s in f2):
+                warns.append(
+                    f"lead 数据体检：{lp.lot2} 的流程 {lot2.product_name} 中不存在衔接步 {lp.step2}")
+
+    # ---- 3. 成环（lead + 普通引用，DAG）----
+    graph: dict[str, set[str]] = {l.lot_name: set() for l in lots}
+    for lp in lead_pairs:
+        graph.setdefault(lp.lot2, set()).add(lp.lot1)          # 配套依赖领导
+    for lot in lots:
+        for r in lot.references or []:
+            # 跳过 lead 内部边（带 lead_id）；lead 语义已由 LeadPair 入图
+            if r.reference_lot and r.start_step and not r.lead_id:
+                graph.setdefault(lot.lot_name, set()).add(r.reference_lot)
+    involved = set()
+    for lp in lead_pairs:
+        involved.add(lp.lot1)
+        involved.add(lp.lot2)
+
+    def _reach(n, seen):
+        for m in graph.get(n, ()):
+            if m not in seen:
+                seen.add(m)
+                _reach(m, seen)
+
+    expanded = set(involved)
+    for n in list(involved):
+        _reach(n, expanded)
+    _visited: set[str] = set()
+    _stack: list[str] = []
+    _cyc: set[str] = set()
+
+    def _dfs(n):
+        if n in _visited or n not in graph:
+            return
+        _visited.add(n)
+        _stack.append(n)
+        for m in graph.get(n, ()):
+            if m in _stack:
+                _idx = _stack.index(m)
+                for x in _stack[_idx:]:
+                    _cyc.add(x)
+            elif m in expanded:
+                _dfs(m)
+        _stack.pop()
+
+    for n in expanded:
+        _dfs(n)
+    if _cyc:
+        warns.append(
+            f"lead 数据体检：{'、'.join(sorted(_cyc))} 的 lead/引用关系成环"
+            "（A 等 B 且 B 等 A），相互依赖会互相拖住，请核对配置")
+
+    # ---- 4. 热启动太靠后：lot1 当前已排在 step1 之后 ----
+    for lp in lead_pairs:
+        lot1 = lot_by_name.get(lp.lot1)
+        if not lot1:
+            continue
+        f1 = flow_map.get(lot1.product_name) or []
+        idx_cur = next((i for i, s in enumerate(f1) if s.step_name == lot1.current_step_name), -1)
+        idx_step1 = next((i for i, s in enumerate(f1) if s.step_name == lp.step1), -1)
+        if idx_cur >= 0 and idx_step1 >= 0 and idx_cur > idx_step1:
+            warns.append(
+                f"lead 数据体检：{lp.lot1} 当前已在其流程的 [{lot1.current_step_name}]"
+                f"（位于衔接步 {lp.step1} 之后），lead 对 {lp.lot1} 侧回拉失效，"
+                f"仅保留闸A（{lp.lot2}.{lp.step2} 不早于完成）")
+    return warns
 
 
 def load_ftf_qty_change(filepath: str) -> dict[str, tuple[int, int, str]]:

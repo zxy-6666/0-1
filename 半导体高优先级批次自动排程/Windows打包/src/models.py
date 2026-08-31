@@ -6,13 +6,37 @@ from typing import Optional
 
 @dataclass
 class LotConstraint:
-    """Lot 启动约束（从 lot_constraints.csv 加载，一个 Lot 可有多条）"""
+    """Lot 启动约束（从 lot_constraints.csv 加载，一个 Lot 可有多条）
+
+    五列声明格式：lot_name | start_step | reference_lot | reference_step | start_mod
+    （语义映射见 lead 设计文档 §3.0：lot1→lot_name, step1→start_step,
+    lot2→reference_lot, step2→reference_step, mod→start_mod）
+    """
     lot_name: str
     reference_lot: Optional[str] = None
     reference_step: Optional[str] = None
-    start_mod: Optional[str] = None       # n(小时), shift, shift_day, 空(立即)
+    start_mod: Optional[str] = None       # n(小时), shift, shift_day, 空(立即), lead(领导衔接)
     start_step: Optional[str] = None      # 满足 reference 条件后，该 step 从计算时间开始；之前的 step 从 start_time 开始
+    lead_id: str = ""                     # 非空=由 lead 行自动生成的内部引用边（铅级配套），
+                                          # 环检测/死锁判定应跳过；其余参与正常引用逻辑
     hold_periods: list[tuple[Optional[datetime], Optional[datetime]]] = field(default_factory=list)
+
+
+@dataclass
+class LeadPair:
+    """lead（领导批次衔接 / back-to-back）关系。
+
+    语义：lot2 的 step2 **尾随** lot1 的 step1（背靠背），且 lot1 上游链按 Q-time
+    回拉对齐，确保不超任何区间 Q-time、不在紧 Q 窗口内空等。
+    - 闸A：lot2.step2.start >= lot1.step1.end（配套不超前）——由挂在 lot2 上、
+      带 lead_id 的内部引用边承载。
+    - 回拉：以 lot2.step2.start 为锚，把 lot1 的 step1 及其入向 Q 段倒排对齐。
+    """
+    lot1: str                 # 领导批（lot_name）
+    step1: str                # lot1 的衔接 step（start_step）
+    lot2: str                 # 配套批（reference_lot）
+    step2: str                # lot2 的对应衔接 step（reference_step）
+    lead_id: str = ""
 
 
 @dataclass
@@ -29,6 +53,7 @@ class Lot:
     running_time: int = 0      # 当前步骤已运行时间(分钟)
     # 约束字段（从 lot_constraints.csv 合并而来）
     references: list[LotConstraint] = field(default_factory=list)  # 多 reference 依赖
+    lead_pairs: list[LeadPair] = field(default_factory=list)       # 本 lot 作为领导批(lead 侧重)的衔接关系
     start_time: Optional[datetime] = None  # 绝对开始时间（取最早）
     start_step: Optional[str] = None       # 满足 reference 条件后，该 step 从计算时间开始
     hold_periods: list[tuple[Optional[datetime], Optional[datetime]]] = field(default_factory=list)  # 多段Hold（合并所有）
