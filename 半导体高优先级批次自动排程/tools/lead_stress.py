@@ -44,7 +44,23 @@ FLOW_WIDE = [
     FlowStep(product_name="PROD", step_number="30", step_name="DISPENSE", eqp_ids=["EQP-DISP1", "EQP-DISP2"]),
     FlowStep(product_name="PROD", step_number="40", step_name="CURE", eqp_ids=["EQP-CURE1", "EQP-CURE2"]),
 ]
+# molding 型链（复刻真实数据）：DAF-BAKE→WARP→MD-PLASMA→MD-MOLDING，
+# 松链 1440（bake→molding）+ 紧链 240（plasma→molding），端步骤设备有停机窗
+FLOW_MOLD = [
+    FlowStep(product_name="PROD", step_number="50", step_name="DAF-BAKE", eqp_ids=["EQP-BAKE"]),
+    FlowStep(product_name="PROD", step_number="60", step_name="WARP-MEAS", eqp_ids=["EQP-WARP"]),
+    FlowStep(product_name="PROD", step_number="70", step_name="MD-PLASMA", eqp_ids=["EQP-PLASMA"]),
+    FlowStep(product_name="PROD", step_number="80", step_name="MD-MOLDING", eqp_ids=["EQP-MOLD"]),
+]
 CT = {("PROD", "10", 1): 30.0, ("PROD", "20", 1): 30.0, ("PROD", "30", 1): 30.0, ("PROD", "40", 1): 60.0}
+# molding 型链 CT：bake 100 / warp 20 / plasma 5 / molding 100（qty=1、2 共用）
+CT.update({("PROD", "50", 1): 100.0, ("PROD", "60", 1): 20.0, ("PROD", "70", 1): 5.0,
+           ("PROD", "80", 1): 100.0, ("PROD", "50", 2): 100.0, ("PROD", "60", 2): 20.0,
+           ("PROD", "70", 2): 5.0, ("PROD", "80", 2): 100.0})
+Q_MOLD = [
+    QTimeConstraint("PROD", "DAF-BAKE", "MD-MOLDING", "track out", "track in", 1440),
+    QTimeConstraint("PROD", "MD-PLASMA", "MD-MOLDING", "track out", "track in", 240),
+]
 Q_LOOSE = [
     QTimeConstraint("PROD", "BAKE", "PLASMA", "track in", "track out", 100000),
     QTimeConstraint("PROD", "PLASMA", "DISPENSE", "track in", "track out", 100000),
@@ -298,6 +314,43 @@ def gen_scenario_N(rng):
     return lots, FLOW_WIDE, Q_TIGHT, None
 
 
+def gen_scenario_O(rng):
+    """复刻真实 bug：molding 型链（DAF-BAKE→WARP→MD-PLASMA→MD-MOLDING，1440 松+240 紧），
+    MD-MOLDING 设备每晚 22:00-08:30 停机。领导批晚到使 molding 自然落点跨入夜间 →
+    链必须整体后移到白班最早空位。断言：molding 完整落在白班窗口（不在停机窗作业）、
+    lead 背靠背、0 超Q、0 闸A 违背。"""
+    eqp = [EqpConstraint("EQP-MOLD", "22:00", "08:30", "-1")]
+    d = rng.uniform(0.0, 3.0)
+    # 领导批 DAF-BAKE 落在 16:30~21:00（自然 molding 落点 19:05~23:35，覆盖"窗前可完成"
+    # 与"跨窗需后移"两种情形）；跟随批晚 d 小时
+    h0 = rng.uniform(7.5, 12.0)
+    ld = mk_lot("MOLDLEAD", timedelta(hours=h0), priority=(1, 1), cur="DAF-BAKE",
+                qty=rng.choice([1, 2]))
+    fl = mk_lot("MOLDFOLLOW", timedelta(hours=h0 + d), priority=(3, 1), cur="DAF-BAKE",
+                qty=rng.choice([1, 2]))
+    attach_lead(fl, ld, step="MD-MOLDING")
+    return [ld, fl], FLOW_MOLD, Q_MOLD, None, eqp
+
+
+def gen_scenario_P(rng):
+    """molding 型链多对竞争：2-3 对 lead 共享单台 EQP-MOLD（白班窗口 13.5h），
+    多链同时段到达 molding → 停机窗把端步骤挤到白班窗口内，验证链整体后移后
+    仍不超 Q、不跨停机窗、lead 不违背闸A。"""
+    eqp = [EqpConstraint("EQP-MOLD", "22:00", "08:30", "-1")]
+    lots = []
+    n_pairs = rng.choice([2, 3])
+    for i in range(n_pairs):
+        d = rng.uniform(0.0, 2.0)
+        h0 = rng.uniform(6.0, 11.0) + i * 1.5
+        ld = mk_lot(f"PLEAD{i}", timedelta(hours=h0), priority=(1, 1), cur="DAF-BAKE",
+                    qty=rng.choice([1, 2]))
+        fl = mk_lot(f"PFOLLOW{i}", timedelta(hours=h0 + d), priority=(3, 1), cur="DAF-BAKE",
+                    qty=rng.choice([1, 2]))
+        attach_lead(fl, ld, step="MD-MOLDING", lead_id=f"p{i}")
+        lots += [ld, fl]
+    return lots, FLOW_MOLD, Q_MOLD, None, eqp
+
+
 SCENARIOS = {
     "A_single_loose": gen_scenario_A,
     "B_tight_q": gen_scenario_B,
@@ -313,6 +366,8 @@ SCENARIOS = {
     "L_eqp_unavailable": gen_scenario_L,
     "M_special_windows": gen_scenario_M,
     "N_multi_q_cross_ref": gen_scenario_N,
+    "O_molding_chain_window": gen_scenario_O,
+    "P_molding_multi_pair": gen_scenario_P,
 }
 
 # 每场景可容忍的校验错误条目上限（比例 × cases，向下取整）。默认 0（任何错误即 FAIL）。
@@ -321,9 +376,47 @@ SCENARIOS = {
 ALLOWED_ERR_RATIO = {"J_long_ct": 0.15}
 
 
+def check_down_window_overlap(le, eqp_constraints):
+    """校验：任何排程步骤不得在设备停机窗内作业（停机窗内设备不可用）。
+
+    把停机窗按"设备上有排程的每一天"展开为 (start, end) 列表，
+    逐一检查该设备上的排程区间是否与停机窗重叠。
+    """
+    if not eqp_constraints:
+        return []
+    wins: dict[str, list] = {}
+    for c in eqp_constraints:
+        if not (c.start_time_str and c.end_time_str):
+            continue
+        try:
+            sh, sm = map(int, c.start_time_str.split(":"))
+            eh, em = map(int, c.end_time_str.split(":"))
+        except (ValueError, AttributeError):
+            continue
+        days = sorted({e.start_time.date()
+                       for e in le if e.eqp_id == c.eqp_name})
+        for d in days:
+            ws = datetime(d.year, d.month, d.day, sh, sm)
+            we = datetime(d.year, d.month, d.day, eh, em)
+            if we <= ws:
+                we += timedelta(days=1)
+            wins.setdefault(c.eqp_name, []).append((ws, we))
+    errors = []
+    for e in le:
+        if e.eqp_id not in wins:
+            continue
+        for ws, we in wins[e.eqp_id]:
+            if e.end_time > ws and e.start_time < we:   # 排程区间与停机窗重叠
+                errors.append(f"停机窗内作业: {e.lot_name}.{e.step_name} "
+                              f"{e.start_time:%m-%d %H:%M}->{e.end_time:%m-%d %H:%M} 与 "
+                              f"{ws:%m-%d %H:%M}->{we:%m-%d %H:%M} 重叠(eqp={e.eqp_id})")
+                break
+    return errors
+
+
 def main():
     args = sys.argv[1:]
-    n_per = 60
+    n_per = 120
     seed0 = 20260901
     quiet = False
     for i, a in enumerate(args):
@@ -365,6 +458,9 @@ def main():
             try:
                 errors = validate_schedule(le, ee, qa, lots, flows, qtimes,
                                            lot_constraints=cons, shift_times=ST, special_eqp_map={})
+                errors = list(errors)
+                # 停机窗内不得作业（用户规则：设备不可用期间不排作业）
+                errors += check_down_window_overlap(le, eqp)
             except Exception as e:
                 crash += 1
                 continue

@@ -108,7 +108,7 @@ def schedule_optimized(
     early_stop_patience: int = 0,
     # ---- 算法旋钮（None 使用调度器默认） ----
     tight_chain_threshold: int = None,
-    qtight_safety_margin: int = None,
+    qtight_safety_margin: float = None,   # 紧 Q-time 安全余量（百分比 0-100，默认 20%）
     chain_wait_safety: int = None,
     cross_shift_avoid: bool = None,
     # ---- SA+Tabu 细调层（借鉴 meta_heuristic_before） ----

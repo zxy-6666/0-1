@@ -76,8 +76,8 @@ def _safe_str(row, col: str, default: str = "") -> str:
     return str(val).strip()
 
 
-def load_lot_constraints(filepath: str) -> list[LotConstraint]:
-    """加载 lot_constraints.csv（五列关系声明：lot1 | step1 | lot2 | step2 | mod）。
+def _parse_constraints_file(filepath: str) -> tuple[list[LotConstraint], list[LeadPair]]:
+    """解析 lot_constraints.csv（五列关系声明：lot1 | step1 | lot2 | step2 | mod）。
 
     列语义（设计文档 §3.0）：
       - lot1：被约束/领导批次（等价旧列 lot_name）；
@@ -102,11 +102,13 @@ def load_lot_constraints(filepath: str) -> list[LotConstraint]:
 
     兼容旧表头（lot_name/start_step/reference_lot/reference_step/start_mod），
     hold_period_N_start/end 多段扣留时段仍受支持（活跃功能）。
+
+    返回 (constraints, lead_pairs)：lead_pairs 为本次文件解析出的 LeadPair，
+    由调用方持有，不依赖模块级全局（避免跨调用历史泄漏导致排程不确定）。
     """
-    global LEAD_PAIRS
-    LEAD_PAIRS = []
     df = _read_csv(filepath)
-    constraints = []
+    constraints: list[LotConstraint] = []
+    lead_pairs: list[LeadPair] = []
     col_names = list(df.columns)
 
     def _col(row, names, default=""):
@@ -143,7 +145,7 @@ def load_lot_constraints(filepath: str) -> list[LotConstraint]:
                     start_step=step1,            # lot1 的 step1
                     lead_id=lead_id,
                 ))
-                LEAD_PAIRS.append(LeadPair(
+                lead_pairs.append(LeadPair(
                     lot1=lot2, step1=step2,      # 领导批（内部 lot1）= 用户声明的 lot2
                     lot2=lot1, step2=step1,      # 配套批（内部 lot2）= 用户声明的 lot1
                     lead_id=lead_id))
@@ -173,6 +175,18 @@ def load_lot_constraints(filepath: str) -> list[LotConstraint]:
             start_step=start_step,
             hold_periods=hold_periods,
         ))
+    return constraints, lead_pairs
+
+
+def load_lot_constraints(filepath: str) -> list[LotConstraint]:
+    """加载 lot_constraints.csv，返回普通引用约束列表。
+
+    同时把本次解析出的 LeadPair 写入模块级 LEAD_PAIRS（兼容旧调用方直接读全局；
+    新代码应使用 _parse_constraints_file 的返回，不依赖全局）。
+    """
+    global LEAD_PAIRS
+    constraints, pairs = _parse_constraints_file(filepath)
+    LEAD_PAIRS = pairs
     return constraints
 
 
@@ -180,14 +194,17 @@ def load_lot_list(filepath: str, constraints_filepath: Optional[str] = None) -> 
     """加载 lot_list.csv（含 start_time 列），约束字段从 lot_constraints.csv 合并"""
     df = _read_csv(filepath)
 
-    # 加载约束
+    # 加载约束（lead_pairs 取自本次文件解析，不依赖全局 LEAD_PAIRS——
+    # 否则同进程第二次 load_lot_list（无约束文件）会带上上一次的 lead 关系，
+    # 导致排程结果依赖调用历史，非确定。）
     all_constraints = []
+    lead_pairs: list[LeadPair] = []
     if constraints_filepath:
-        all_constraints = load_lot_constraints(constraints_filepath)
+        all_constraints, lead_pairs = _parse_constraints_file(constraints_filepath)
 
     # lead 关系按领导批 lot1 归组（供回拉与终检）
     lead_pairs_by_lot1: dict[str, list[LeadPair]] = {}
-    for _lp in LEAD_PAIRS:
+    for _lp in lead_pairs:
         lead_pairs_by_lot1.setdefault(_lp.lot1, []).append(_lp)
 
     # 按 lot_name 分组约束

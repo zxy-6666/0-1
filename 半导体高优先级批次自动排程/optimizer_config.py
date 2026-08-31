@@ -59,9 +59,10 @@ class OptimizerConfig:
     变大: 更多链被当作紧链，起点延迟/紧凑化更激进，端步骤更少超 Q，但可能出现大间隔
     变小: 更少链被当作紧链，链放置更靠近自然最早时间，间隔更小，但端步骤更易超 Q"""
 
-    qtight_safety_margin: int = 90
-    """紧 Q-time 起点延迟的安全余量（分钟）。预留端步骤因设备竞争/换班被推后的缓冲。
-    推荐范围: 30-180
+    qtight_safety_margin: float = 20.0
+    """紧 Q-time 起点延迟的安全余量（百分比 %）。按紧链 Q 预算 D 的占比预留
+    端步骤因设备竞争/换班被推后的缓冲（如 D=240、余量 20% → 预留 48 分钟）。
+    推荐范围: 5-50
     变大: 起点更保守地延迟，端步骤更不易超 Q，但整体完工时间更晚
     变小: 起点更贴近最早可行，整体更紧凑，但端步骤受设备挤兑时更易超 Q"""
 
@@ -178,9 +179,9 @@ class OptimizerConfig:
              "desc": "Q-time 上限 ≤ 该值视为紧链，启用起点延迟/整链锚点后移，避免端步骤超 Q。",
              "up": "更多链按紧链紧凑化，端步骤更少超 Q，但可能出现大间隔",
              "down": "链靠自然最早放置，间隔更小，但端步骤更易超 Q"},
-            {"group": "Q-time 链 / 紧凑性", "key": "qtight_safety_margin", "type": "int",
-             "label": "Q-time 安全余量（分钟）", "default": 90, "min": 30, "max": 180, "step": 5,
-             "desc": "紧 Q-time 起点延迟预留的缓冲，缓冲端步骤被设备/换班挤兑。",
+            {"group": "Q-time 链 / 紧凑性", "key": "qtight_safety_margin", "type": "float",
+             "label": "Q-time 安全余量（%）", "default": 20, "min": 5, "max": 50, "step": 5,
+             "desc": "紧 Q-time 起点延迟预留的缓冲（Q 预算的百分比，如 D=240、20% → 预留 48 分钟），缓冲端步骤被设备/换班挤兑。",
              "up": "起点更保守延迟，端步骤更不易超 Q，但完工时间更晚",
              "down": "起点更早，整体紧凑，但端步骤受挤兑时更易超 Q"},
             {"group": "Q-time 链 / 紧凑性", "key": "chain_wait_safety", "type": "int",

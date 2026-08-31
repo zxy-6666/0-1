@@ -218,6 +218,11 @@ def _check_references(
     for c in lot_constraints:
         if not c.reference_lot or not c.reference_step:
             continue
+        # lead 上游对齐引用（lead_id 带 "-u" 后缀）是相位对齐软目标（引擎评分不计入
+        # 硬违背），校验时跳过——否则 leader 因设备窗整体后移到白班最早空位时，
+        # 会被误判为硬错误（真实数据 PC2.MD-MOLDING 同样存在该软对齐差）。
+        if getattr(c, "lead_id", "") and str(c.lead_id).endswith("-u"):
+            continue
         # reference 步骤在 reference_lot 上的结束时间
         ref_entry = by_lot_step.get((c.reference_lot, c.reference_step))
         if ref_entry is None:

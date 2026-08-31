@@ -37,7 +37,7 @@ INF = float("inf")
 FAR_FUTURE = datetime(2099, 12, 31, 0, 0)
 SCHEDULE_WINDOW_DAYS = 365
 TIGHT_CHAIN_THRESHOLD = 240  # 紧链判定阈值（分钟）
-QTIGHT_SAFETY_MARGIN = 90  # 紧 Q-time 起点延迟的安全余量（分钟）：预留端步骤因设备竞争/换班被推后的缓冲
+QTIGHT_SAFETY_MARGIN = 20.0  # 紧 Q-time 起点延迟的安全余量（百分比，按 Q 预算的 % 预留缓冲）
 CROSS_SHIFT_AVOID = True  # 紧 Q 链不跨班次（用户规则）：紧链相邻步骤（如 PLASMA→DISPENSE）
 # 的 Q 窗口若跨过班次切换时刻，把链首起点推后到班次之后，使整段链落在同一班次内。
 # best-effort：推后会撑破上游紧链或不可行时保留原排程并输出跨班次告警。可配置关闭。
@@ -918,8 +918,9 @@ def _tight_qtime_target_start(
             tgt = e_slot - timedelta(minutes=D) - timedelta(minutes=max(ct, 0))
         else:
             tgt = e_slot - timedelta(minutes=D)
-        # 安全余量仅在紧链保留（松链保留余量易把起点推进设备不可用段）
-        margin = QTIGHT_SAFETY_MARGIN if is_tight else 0
+        # 安全余量仅在紧链保留（松链保留余量易把起点推进设备不可用段）。
+        # 余量为 Q 预算 D 的百分比（默认 20%）：D 越大预留的绝对缓冲越大。
+        margin = D * QTIGHT_SAFETY_MARGIN / 100.0 if is_tight else 0
         tgt = tgt + timedelta(minutes=margin)
         # ---- 紧 Q 链不跨班次（用户规则）：Q 紧时链内相邻步骤不跨班次切换 ----
         # 用"生效起点"评估：max(自然起点, Q 目标)——Q 目标本身可能已把 S 推到 E 当日，
@@ -969,6 +970,37 @@ def _tight_qtime_target_start(
                             and (_st - ready_time).total_seconds() / 60.0 > _D2):
                         _st = None      # 推后会撑破上游紧链 → 放弃（保留跨班次告警）
                         break
+                # E 可行性守卫：S 推后到 _st 后，E 的最早可行时刻（设备停机窗/
+                # 占用/换班）必须仍落在 S.end + D 的 Q-time 预算内。若推后使 E
+                # 只能落在预算之外（如 DISPENSE 被 22:00 停机窗推到次日 08:30、
+                # S 又被推后到 21:30 → 预算被撑破），放弃推后（保留原排程+告警）——
+                # 用户规则"尽量最早开始，约束不满足时整体后移"，而非把链首推后
+                # 却把端步骤独自甩进停机窗。
+                if _st is not None and best_eid is not None and best_eid != "-":
+                    # 先用与主循环相同的约束解析（换班/设备窗）得到 S 的真实开始
+                    _s_st_resolved = _st
+                    if step.eqp_ids:
+                        _s_st_resolved = _resolve_constraints(
+                            _st, ct, step.eqp_ids[0], machine_intervals,
+                            shift_change_intervals or [], step_windows or {}, end_windows or {},
+                            step.step_name, max_iterations=10)
+                    if _s_st_resolved != datetime.max:
+                        _s_end_pushed = _s_st_resolved + timedelta(minutes=max(ct, 0))
+                        _e_ready_pushed = _s_end_pushed + timedelta(minutes=get_step_wait_time(
+                            lot.priority[0], lot.priority[1], priority_wait_map))
+                        _e_after = _find_earliest_slot(
+                            machine_intervals.get(best_eid, []), _e_ready_pushed,
+                            timedelta(minutes=e_ct))
+                        if _e_after != datetime.max:
+                            _e_after = _resolve_constraints(
+                                _e_after, e_ct, best_eid, machine_intervals,
+                                shift_change_intervals or [], step_windows or {}, end_windows or {},
+                                end_flow.step_name, max_iterations=10)
+                        _deadline_pt = _s_end_pushed + timedelta(minutes=D)
+                        _e_point = (_e_after + timedelta(minutes=e_ct)
+                                    if end_mod == "track out" else _e_after)
+                        if _e_after == datetime.max or _e_point > _deadline_pt:
+                            _st = None
                 if _st is not None and _st > tgt:
                     tgt = _st
         if tgt > s_start and (target_time is None or tgt > target_time):
@@ -981,13 +1013,57 @@ def _tight_qtime_target_start(
 # 设备可用性检查
 # ============================================================
 
+def _down_fit_span(down: list) -> timedelta:
+    """停机窗之间最大可用间隙。
+
+    判定某操作能否"完整落在某个可用时段内"：只要操作时长不超过相邻停机窗之间
+    的最大间隙，就应该要求操作完整时长不跨越任何停机窗（设备不可用期间不得作业）；
+    否则（长 CT，如 qty=25 的 FC-REFLOW CT≈925min > 每日 08:30-22:00 可用段 810min）
+    退化为只约束操作起点不落在窗内，允许跨越继续运行，避免被推到远未来。
+    """
+    if len(down) < 2:
+        return timedelta.max        # 单窗口/无窗口：总有可用时段可以放
+    ds = sorted(down)
+    best = timedelta(0)
+    for i in range(1, len(ds)):
+        gap = ds[i][0] - ds[i - 1][1]
+        if gap > best:
+            best = gap
+    return best
+
+
+def _down_push(
+    c: datetime,
+    duration: timedelta,
+    down: list,
+    can_fit: bool,
+) -> Optional[datetime]:
+    """判断 [c, c+duration) 与停机窗的关系，返回应把起点推到的时刻；None=当前可用。
+
+    - 起点落在窗内：无论长短都推到窗口结束；
+    - 完整时长跨越停机窗且操作能完整放入可用时段（can_fit）：推到窗口结束；
+    - 长 CT（!can_fit）：只约束起点不落在窗内，允许跨越。
+    """
+    end = c + duration
+    for ws, we in down:
+        if end <= ws or c >= we:
+            continue                # 不与该窗口相交
+        if not can_fit:
+            if ws <= c < we:
+                return we           # 起点在窗内：推到窗口结束
+            continue                # 长 CT：起点合法，允许跨越
+        return we                   # 完整时长不得跨越停机窗
+    return None
+
+
 def _find_earliest_slot(
     intervals: list[tuple[Optional[datetime], Optional[datetime]]],
     lot_ready: datetime,
     duration: timedelta,
 ) -> datetime:
-    # 停机窗（3 元组, tag="down"）只约束"操作起点"不得落在窗内，允许长 CT 操作
-    # 跨越停机窗继续运行；普通占用区间要求完整时长不重叠。分开排序处理。
+    # 停机窗：默认要求操作完整时长不得跨越（设备不可用期间不作业）；仅当操作
+    # 时长超过相邻停机窗最大可用间隙（长 CT 无法在单个可用段内完成）时退化为
+    # 只约束起点不落在窗内。普通占用区间要求完整时长不重叠。分开排序处理。
     down = [(iv[0] if iv[0] is not None else datetime.min,
              iv[1] if iv[1] is not None else datetime.max)
             for iv in intervals
@@ -999,15 +1075,7 @@ def _find_earliest_slot(
                 if not (len(iv) >= 3 and iv[2] == "down")
                 and not (iv[0] is None and iv[1] is None)]
     occupied.sort(key=lambda x: x[0])
-
-    def _start_ok(c: datetime) -> bool:
-        # 起点不得落在任一停机窗内
-        for ws, we in down:
-            if c >= we:
-                continue
-            if ws <= c < we:
-                return False
-        return True
+    can_fit = duration <= _down_fit_span(down)
 
     candidate = lot_ready
     ptr = 0            # 单调扫描指针：occupied[0:ptr] 均满足 iv_end <= candidate
@@ -1028,13 +1096,10 @@ def _find_earliest_slot(
             break       # 后续区间 start 更大，不可能再重叠
         if bumped:
             continue
-        if _start_ok(candidate):
+        nb = _down_push(candidate, duration, down, can_fit)
+        if nb is None:
             return candidate
-        # 起点在停机窗内：推到该窗口结束，再重查占用
-        for ws, we in down:
-            if ws <= candidate < we:
-                candidate = we
-                break
+        candidate = nb             # 起点在窗内 / 完整时长跨越停机窗：推到窗口结束
     return candidate
 
 
@@ -1045,7 +1110,7 @@ def _find_latest_slot(
 ) -> datetime:
     """在设备占用区间中，找到 deadline 之前最晚的可用时间槽，返回 start_time。
     用于链拆分后反向调度：从 Q-time deadline 往前找最晚可用时间。
-    停机窗（3 元组, tag="down"）只约束起点不得落在窗内，允许操作跨越停机窗。"""
+    停机窗：默认要求操作完整时长不得跨越（can_fit 时）；长 CT 只约束起点。"""
     down = [(iv[0] if iv[0] is not None else datetime.min,
              iv[1] if iv[1] is not None else datetime.max)
             for iv in intervals
@@ -1057,6 +1122,7 @@ def _find_latest_slot(
              if not (len(iv) >= 3 and iv[2] == "down")
              and not (iv[0] is None and iv[1] is None)]
     valid.sort(key=lambda x: x[0])
+    can_fit = duration <= _down_fit_span(down)
     candidate_end = deadline
     candidate_start = candidate_end - duration
     # 从后往前检查占用区间
@@ -1066,13 +1132,12 @@ def _find_latest_slot(
         if iv_start < candidate_end:
             candidate_end = iv_start
             candidate_start = candidate_end - duration
-    # 起点不得落在停机窗内：若在窗内则推后到窗口结束（更晚、更贴近 deadline）
-    for ws, we in down:
-        if ws <= candidate_start < we:
-            candidate_start = we
-            if candidate_start + duration > deadline:
-                return datetime.min
-            break
+    # 停机窗：完整时长不得跨越（can_fit 时）；长 CT 只约束起点不落在窗内
+    nb = _down_push(candidate_start, duration, down, can_fit)
+    if nb is not None and nb > candidate_start:
+        candidate_start = nb
+        if candidate_start + duration > deadline:
+            return datetime.min
     return max(candidate_start, datetime.min)
 
 
@@ -1082,11 +1147,16 @@ def _skip_unavailable(
     duration: timedelta,
 ) -> datetime:
     end = start + duration
+    down = [iv for iv in intervals if len(iv) >= 3 and iv[2] == "down"]
+    can_fit = duration <= _down_fit_span([
+        (iv[0] if iv[0] is not None else datetime.min,
+         iv[1] if iv[1] is not None else datetime.max)
+        for iv in down])
     for interval in intervals:
-        # 停机窗（3 元组, tag="down"）：只约束"新操作起点"不得落在窗内，
-        # 允许长 CT 操作跨越停机窗继续运行（如 qty=25 的 FC-REFLOW CT≈925min
-        # 超过每日 08:30-22:00 运行窗 810min，若要求完整时长不跨越会被推到
-        # 365 天窗口末尾、产生 2027 年远未来排程——fuzz seed 20260828001 根因）。
+        # 停机窗：默认要求操作完整时长不得跨越（设备不可用期间不作业）；
+        # 仅当长 CT 无法完整放入任一可用时段（can_fit=False）时，退化为只约束
+        # "新操作起点"不得落在窗内，允许跨越继续运行（如 qty=25 的 FC-REFLOW
+        # CT≈925min 超过每日 08:30-22:00 运行窗 810min——fuzz seed 20260828001 根因）。
         if len(interval) >= 3 and interval[2] == "down":
             iv_start, iv_end = interval[0], interval[1]
             actual_start = iv_start if iv_start is not None else datetime.min
@@ -1094,6 +1164,11 @@ def _skip_unavailable(
             if start >= actual_end:
                 continue
             if actual_start <= start < actual_end:
+                start = actual_end
+                end = start + duration
+                continue
+            if can_fit and end > actual_start:
+                # 起点在窗外但完整时长跨越停机窗：推到窗口结束
                 start = actual_end
                 end = start + duration
             continue
@@ -3270,11 +3345,11 @@ def _coarse_earliest_anchors(
                     need = pos[k - 1] + timedelta(minutes=cts[k - 1] + waits[k - 1])
                     if pos[k] < need:
                         pos[k] = need
-                # 2) 整链总时长是否逼近 min_qtime 预算（含余量）
+                # 2) 整链总时长是否逼近 min_qtime 预算（含余量，余量为百分比）
                 chain_budget = float(info.get("min_qtime") or 0)
                 total_dur = (pos[n - 1] - pos[0]).total_seconds() / 60.0
                 need_pull = (chain_budget > 0
-                             and total_dur > chain_budget - QTIGHT_SAFETY_MARGIN)
+                             and total_dur > chain_budget * (100.0 - QTIGHT_SAFETY_MARGIN) / 100.0)
                 # 3) 反向背靠背压实（仅当整链逼近预算上限时；后移只缩小链内间隙，
                 #    不违反任何规则，也不会把"钉晚"反向传导给链首）。
                 #    只压实紧 Q-time 段内的步骤：宽松段（如 BAKE→DISPENSE 1440min）
@@ -3837,13 +3912,15 @@ def _max_forward_shift(
     other_int: dict,
     lower_bound: datetime,
     step_min: Optional[dict] = None,
+    down_check: Optional[callable] = None,
 ) -> timedelta:
     """计算整批可**前移**（提前）的最大位移，用于回拉跟随批贴齐领导批。
 
     约束：
       1. 任何步骤前移后不早于 lower_bound（跟随批的 start_time）；
       2. step_min（如 lead 闸A 门步：前移后不得早于领导批对应 step 完成）；
-      3. 前移后的设备占用不与其它批次（other_int）冲突。
+      3. 前移后的设备占用不与其它批次（other_int）冲突；
+      4. down_check：前移后的占用不得落入设备停机窗（设备不可用期间不作业）。
     返回实际可用的前移量（0 = 无法前移）。
     """
     shift_d = target_shift
@@ -3858,7 +3935,7 @@ def _max_forward_shift(
             shift_d = min(shift_d, e.start_time - m)
     if shift_d <= timedelta(0):
         return timedelta(0)
-    # 3. 设备冲突：从可用位移线性收缩（步进 5min，冲突窗口通常很小）
+    # 3/4. 设备冲突 + 停机窗：从可用位移线性收缩（步进 5min，冲突窗口通常很小）
     while shift_d > timedelta(0):
         ok = True
         for e in entries:
@@ -3873,6 +3950,9 @@ def _max_forward_shift(
                 if ns < oe_ and os_ < ne:
                     ok = False
                     break
+            if ok and down_check is not None and not down_check(e, ns, ne):
+                ok = False
+                break
             if not ok:
                 break
         if ok:
@@ -3925,6 +4005,8 @@ def _lead_back_shift(
     eqp_entries: list[EqpScheduleEntry],
     flows: list[FlowStep],
     window_end: datetime,
+    eqp_constraints: Optional[list] = None,
+    schedule_start: Optional[datetime] = None,
 ) -> tuple[list[ScheduleEntry], list[EqpScheduleEntry]]:
     """lead 背靠背回拉（back-shift alignment，设计文档 §4.2 / §5.3 Pass B）。
 
@@ -3935,7 +4017,8 @@ def _lead_back_shift(
     整批统一顺延 → lot1 内部相邻步骤与各 Q-time 间隔原样保留（不新增 Q 风险），
     "空闲等待"被推迟到紧 Q 计时尚未启动的位置。只校验：
       1. 顺延后的 lot1 各设备占用不与其它批次占用冲突；
-      2. 不越过排程窗口末端。
+      2. 不越过排程窗口末端；
+      3. 不落入设备停机窗（设备不可用期间不作业）。
     无可优化 lead / 已背靠背 / 顺延与设备冲突时，该 lead 保持原样（软退化为最小间隙）。
 
     注意：某 lot 同时是某 lead 的 lot1 又是另一 lead 的 lot2 时，按声明顺序依次处理，
@@ -3944,6 +4027,21 @@ def _lead_back_shift(
     lead_pairs = [lp for lot in lots for lp in (lot.lead_pairs or [])]
     if not lead_pairs or not lot_entries:
         return lot_entries, eqp_entries
+
+    # 停机窗：{eqp: [(ws, we)]}——回拉/顺延后的占用不得落入停机窗
+    _down_map: dict[str, list[tuple[datetime, datetime]]] = {}
+    if eqp_constraints:
+        _ss = schedule_start or min((e.start_time for e in lot_entries), default=datetime.now())
+        _expanded = _expand_eqp_constraints(eqp_constraints, _ss)
+        _down_map = {k: [(ws, we) for ws, we in v] for k, v in _expanded.items()}
+
+    def _down_ok(e: ScheduleEntry, ns: datetime, ne: datetime) -> bool:
+        if e.eqp_id == "-" or e.eqp_id not in _down_map:
+            return True
+        for ws, we in _down_map[e.eqp_id]:
+            if ne > ws and ns < we:
+                return False
+        return True
 
     lot_by_name = {l.lot_name: l for l in lots}
     le = list(lot_entries)
@@ -3973,6 +4071,8 @@ def _lead_back_shift(
             if e.eqp_id == "-":
                 continue
             ns, ne = e.start_time + shift_d, e.end_time + shift_d
+            if not _down_ok(e, ns, ne):
+                return False
             for (os_, oe_) in other_int.get(e.eqp_id, []):
                 if ns < oe_ and os_ < ne:      # 区间重叠
                     return False
@@ -4021,7 +4121,8 @@ def _lead_back_shift(
                         _src_e = by_lot_step.get(_r.reference_lot, {}).get(_r.reference_step or "")
                         if _src_e is not None:
                             step_min[_r.start_step] = _src_e.end_time
-                    fshift = _max_forward_shift(lot2_es, timedelta(minutes=gap_min), other2, lower, step_min)
+                    fshift = _max_forward_shift(lot2_es, timedelta(minutes=gap_min), other2, lower, step_min,
+                                                down_check=_down_ok)
                     if fshift > timedelta(0):
                         for e in le:
                             if e.lot_name == lp.lot2:
@@ -4123,7 +4224,7 @@ def schedule(
     chain_placement: str = "compact",
     ref_release_forecast: Optional[dict] = None,
     tight_chain_threshold: Optional[int] = None,
-    qtight_safety_margin: Optional[int] = None,
+    qtight_safety_margin: Optional[float] = None,
     chain_wait_safety: Optional[int] = None,
     cross_shift_avoid: Optional[bool] = None,
     out_warnings: Optional[list] = None,
@@ -4223,7 +4324,8 @@ def schedule(
         _win = datetime.now()
     _best_le, _best_ee = _lead_back_shift(
         lots=_orig_lots, lot_entries=_best_le, eqp_entries=_best_ee,
-        flows=flows, window_end=_win + timedelta(days=2))
+        flows=flows, window_end=_win + timedelta(days=2),
+        eqp_constraints=eqp_constraints)
     # ---- 紧 Q 链跨班次风险告警（仅提示，不改变结果）----
     try:
         _cs = _detect_qtime_cross_shift(_best_le, qtimes, shift_times)
@@ -4257,7 +4359,7 @@ def _run_schedule_pass(
     chain_placement: str = "compact",
     ref_release_forecast: Optional[dict] = None,
     tight_chain_threshold: Optional[int] = None,
-    qtight_safety_margin: Optional[int] = None,
+    qtight_safety_margin: Optional[float] = None,
     chain_wait_safety: Optional[int] = None,
     cross_shift_avoid: Optional[bool] = None,
     out_warnings: Optional[list] = None,
@@ -4273,6 +4375,7 @@ def _run_schedule_pass(
         special_eqp_map: 特殊设备配置 {eqp_name: SpecialEqp}
         lot_order: Lot 调度顺序，None 时按优先级排序
         eqp_preferences: 设备偏好
+        qtight_safety_margin: 紧 Q-time 安全余量（百分比 0-100，默认 20%）
 
     Returns:
         (lot_entries, eqp_entries, qtime_alerts)
@@ -4298,7 +4401,8 @@ def _run_schedule_pass(
     # 避免上一次调用残留的自定义值污染后续以默认参数运行的调用
     # （同进程多请求 / 测试先后调用场景）。
     TIGHT_CHAIN_THRESHOLD = tight_chain_threshold if tight_chain_threshold is not None else 240
-    QTIGHT_SAFETY_MARGIN = qtight_safety_margin if qtight_safety_margin is not None else 90
+    # 安全余量为百分比（0-100，默认 20%）：按紧链 Q 预算 D 的占比预留起点缓冲
+    QTIGHT_SAFETY_MARGIN = qtight_safety_margin if qtight_safety_margin is not None else 20.0
     CHAIN_WAIT_SAFETY = chain_wait_safety if chain_wait_safety is not None else 20
     CROSS_SHIFT_AVOID = cross_shift_avoid if cross_shift_avoid is not None else True
 
