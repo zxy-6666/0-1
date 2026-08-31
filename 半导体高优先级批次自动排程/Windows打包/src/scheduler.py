@@ -238,6 +238,10 @@ def _effective_chain_wait(
     且在中间步骤 CT 吃紧时自动压紧（借鉴 scheduler_before1 的 MIN_CHAIN_WAIT 动态压缩）。
     """
     priority_wait = float(get_step_wait_time(lot.priority[0], lot.priority[1], priority_wait_map))
+    # lead 跟随批（lot.references 含带 lead_id 的闸A 内部边）：链内不空等，
+    # 让衔接步贴齐领导批完成时刻（lead 回拉的前提，避免低优先级 wait 把跟随批越拖越远）。
+    if any(getattr(r, "lead_id", "") for r in (lot.references or [])):
+        priority_wait = 0.0
     if not chain_info:
         return priority_wait
     budget = _chain_gap_budget(
@@ -3641,6 +3645,56 @@ def _try_schedule_chain_reverse(
 # 主调度函数
 # ============================================================
 
+def _max_forward_shift(
+    entries: list,
+    target_shift: timedelta,
+    other_int: dict,
+    lower_bound: datetime,
+    step_min: Optional[dict] = None,
+) -> timedelta:
+    """计算整批可**前移**（提前）的最大位移，用于回拉跟随批贴齐领导批。
+
+    约束：
+      1. 任何步骤前移后不早于 lower_bound（跟随批的 start_time）；
+      2. step_min（如 lead 闸A 门步：前移后不得早于领导批对应 step 完成）；
+      3. 前移后的设备占用不与其它批次（other_int）冲突。
+    返回实际可用的前移量（0 = 无法前移）。
+    """
+    shift_d = target_shift
+    if shift_d <= timedelta(0):
+        return timedelta(0)
+    # 1/2. 受 start_time 与闸A 门步下界截断
+    for e in entries:
+        if e.eqp_id == "-":
+            continue
+        m = step_min.get(e.step_name, lower_bound) if step_min else lower_bound
+        if e.start_time - shift_d < m:
+            shift_d = min(shift_d, e.start_time - m)
+    if shift_d <= timedelta(0):
+        return timedelta(0)
+    # 3. 设备冲突：从可用位移线性收缩（步进 5min，冲突窗口通常很小）
+    while shift_d > timedelta(0):
+        ok = True
+        for e in entries:
+            if e.eqp_id == "-":
+                continue
+            ns, ne = e.start_time - shift_d, e.end_time - shift_d
+            m = step_min.get(e.step_name, lower_bound) if step_min else lower_bound
+            if ns < m:
+                ok = False
+                break
+            for (os_, oe_) in other_int.get(e.eqp_id, []):
+                if ns < oe_ and os_ < ne:
+                    ok = False
+                    break
+            if not ok:
+                break
+        if ok:
+            return shift_d
+        shift_d -= timedelta(minutes=5)
+    return timedelta(0)
+
+
 def _lead_back_shift(
     lots: list[Lot],
     lot_entries: list[ScheduleEntry],
@@ -3710,19 +3764,53 @@ def _lead_back_shift(
         e2 = by_lot_step.get(lp.lot2, {}).get(lp.step2)
         if e1 is None or e2 is None:
             continue
-        # 闸A 必须以实际排程为准；此处只做"背靠背"顺延（lot2 不可早于 lot1 由闸A保证）
+        # 闸A 必须以实际排程为准；此处只做"背靠背"贴齐（lot2 不可早于 lot1 由闸A保证）
         gap_min = (e2.start_time - e1.end_time).total_seconds() / 60.0
         if gap_min < 2.0:
             continue                            # 已背靠背（差距≤2min）或 lot1 更迟
-        if not lot1.lead_pairs:
+        _ord1 = _flow_order.get(lot1.product_name, {})
+        if lp.step1 not in _ord1:
             continue
-        # lot1 已排步骤，按 flow 顺序稳定排序（step1 必须在其流程内）
-        _ord = _flow_order.get(lot1.product_name, {})
-        if lp.step1 not in _ord:
-            continue
-        lot1_es = [e for e in le if e.lot_name == lp.lot1 and e.step_name in _ord]
-        lot1_es.sort(key=lambda x: _ord[x.step_name])
+        lot1_es = [e for e in le if e.lot_name == lp.lot1 and e.step_name in _ord1]
+        lot1_es.sort(key=lambda x: _ord1[x.step_name])
         if len(lot1_es) < 1:
+            continue
+
+        # ---- 分支1：回拉跟随批（lot2）——把 step2 及之前步骤整体前移，贴齐领导批完成 ----
+        # 适用于"跟随批被 wait/设备拖慢、领导批早已完成"（用户主场景）。
+        lot2 = lot_by_name.get(lp.lot2)
+        if lot2:
+            _ord2 = _flow_order.get(lot2.product_name, {})
+            if lp.step2 in _ord2:
+                lot2_es = [e for e in le if e.lot_name == lp.lot2 and e.step_name in _ord2]
+                lot2_es.sort(key=lambda x: _ord2[x.step_name])
+                if lot2_es:
+                    other2 = _other_intervals(lp.lot2)
+                    lower = lot2.start_time or datetime.min
+                    # 闸A 门步下界：跟随批上每条 lead 引用（带 lead_id）的衔接步，
+                    # 前移后不得早于对应领导批 step 完成时刻——防止整批前移把早期
+                    # 衔接步拽到领导批完成之前（违反闸A）。
+                    step_min: dict = {}
+                    for _r in (lot2.references or []):
+                        if not (getattr(_r, "lead_id", "") and _r.start_step):
+                            continue
+                        _src_e = by_lot_step.get(_r.reference_lot, {}).get(_r.reference_step or "")
+                        if _src_e is not None:
+                            step_min[_r.start_step] = _src_e.end_time
+                    fshift = _max_forward_shift(lot2_es, timedelta(minutes=gap_min), other2, lower, step_min)
+                    if fshift > timedelta(0):
+                        for e in le:
+                            if e.lot_name == lp.lot2:
+                                e.start_time = e.start_time - fshift
+                                e.end_time = e.end_time - fshift
+                        for e in ee:
+                            if e.lot_name == lp.lot2:
+                                e.start_time = e.start_time - fshift
+                                e.end_time = e.end_time - fshift
+                        continue                # 已回拉，处理下一条 lead
+
+        # ---- 分支2：顺延领导批（lot1）——lot1 提前做完产生空闲带，整体后移贴齐 lot2 ----
+        if not lot1.lead_pairs:
             continue
         other = _other_intervals(lp.lot1)
         shift_d = timedelta(minutes=gap_min)
