@@ -311,12 +311,51 @@ def test_lead_loader_role_swap():
           f"LEAD.start={l_disp.start_time} FOLLOW.end={f_disp.end_time}")
 
 
+def test_lead_upstream_edge():
+    """lead 自动补全两条内部边（等效用户双向引用）：
+    闸A（跟随批 step2 等 领导批 step1 完成）+ 上游对齐（领导批 step1 等 跟随批 step2
+    的紧邻上一步完成）→ 领导批不跑太快，两批衔接步真正背靠背。"""
+    print("\n=== test_lead_upstream_edge ===")
+    import copy as _copy
+    from scheduler import _inject_lead_upstream_refs
+    from data_loader import get_product_flow_map
+    _dcopy, flow, ct, qtimes, lead, follow = _make_backshift_ctx()
+    # 用户视角：LEAD=主点(跟随)，FOLLOW=leading(领导在前跑)
+    # 内部 LeadPair：lot1=FOLLOW(领导)、step1=DISPENSE；lot2=LEAD(跟随)、step2=DISPENSE
+    lead.lead_pairs = []        # 清掉 ctx 默认（LEAD 领导）
+    lead.references = []        # 清掉 ctx 默认闸A
+    follow.lead_pairs = [LeadPair("FOLLOW", "DISPENSE", "LEAD", "DISPENSE", "u0")]
+    lead.references = [LotConstraint(lot_name="LEAD", reference_lot="FOLLOW",
+                                     reference_step="DISPENSE", start_step="DISPENSE",
+                                     start_mod=None, lead_id="u0")]
+    flow_map = get_product_flow_map(flow)
+    _inject_lead_upstream_refs([follow, lead], flow_map)
+    up = [r for r in follow.references or [] if r.lead_id.endswith("-u")]
+    check("upstream: 领导批补上游对齐边 (FOLLOW.DISPENSE 等 LEAD.PLASMA)",
+          len(up) == 1 and up[0].reference_lot == "LEAD"
+          and up[0].reference_step == "PLASMA"
+          and up[0].start_step == "DISPENSE", str(up))
+
+    le, ee, qa = run(flow, ct, qtimes, [lead, follow])
+    errs = validate_schedule(le, ee, qa, [lead, follow], flow, qtimes)
+    f_disp = next(e for e in le if e.lot_name == "FOLLOW" and e.step_name == "DISPENSE")
+    l_disp = next(e for e in le if e.lot_name == "LEAD" and e.step_name == "DISPENSE")
+    l_pla = next(e for e in le if e.lot_name == "LEAD" and e.step_name == "PLASMA")
+    check("upstream: 排程 0 错误", len(errs) == 0, str(errs[:3]))
+    check("upstream: 领导批 DISPENSE 不早于跟随批 PLASMA 完成（上游对齐生效）",
+          f_disp.start_time >= l_pla.end_time,
+          f"FOLLOW.DISPENSE.start={f_disp.start_time} LEAD.PLASMA.end={l_pla.end_time}")
+    gap = (f_disp.start_time - l_disp.end_time).total_seconds() / 60.0
+    check("upstream: 背靠背 gap<=2min", gap <= 2.0, f"gap={gap}min")
+
+
 def main():
     test_lead_invariant()
     test_lead_no_ring_warning()
     test_lead_back_shift()
     test_lead_health_check()
     test_lead_loader_role_swap()
+    test_lead_upstream_edge()
     print(f"\nSUMMARY: {PASS}/{PASS + FAIL} passed, {FAIL} failed")
     sys.exit(1 if FAIL else 0)
 

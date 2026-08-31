@@ -3695,6 +3695,44 @@ def _max_forward_shift(
     return timedelta(0)
 
 
+def _inject_lead_upstream_refs(lots: list, flow_map: dict) -> None:
+    """lead 上游对齐（设计文档 §4.1 第二条内部阻塞，等效用户原先的"双向普通引用"）：
+    领导批 step1 **等 跟随批 step2 的紧邻上一步完成**——让领导批不跑太快，
+    两批在衔接步处真正背靠背（跟随批的链相位对齐，PC1 的 DISPENSE 不会早于 real1 的 PLASMA/BAKE）。
+
+    生成的引用带 lead_id 标记（"-u" 后缀），环检测/死锁判定按 lead 内部边跳过。
+    幂等：已存在同键引用时跳过（多 seed 反复调用不会重复叠加）。
+    """
+    by_name = {l.lot_name: l for l in lots}
+    for lot in lots:
+        for lp in lot.lead_pairs or []:
+            if lp.lot1 != lot.lot_name:
+                continue                       # 只处理挂在领导批上的 LeadPair
+            follow = by_name.get(lp.lot2)
+            if not follow:
+                continue
+            ff = flow_map.get(follow.product_name)
+            if not ff:
+                continue
+            idx = next((i for i, s in enumerate(ff) if s.step_name == lp.step2), -1)
+            if idx <= 0:
+                continue                       # 跟随步是流程首步，无上游可对齐
+            up_step = ff[idx - 1].step_name
+            if lot.references is None:
+                lot.references = []
+            if any(r.reference_lot == follow.lot_name
+                   and r.reference_step == up_step
+                   and getattr(r, "lead_id", "") for r in lot.references):
+                continue
+            lot.references.append(LotConstraint(
+                lot_name=lot.lot_name,
+                reference_lot=follow.lot_name,
+                reference_step=up_step,
+                start_step=lp.step1,
+                start_mod=None,
+                lead_id=lp.lead_id + "-u"))
+
+
 def _lead_back_shift(
     lots: list[Lot],
     lot_entries: list[ScheduleEntry],
@@ -3864,6 +3902,12 @@ def schedule(
     第二遍在深拷贝的 lots 上运行，避免第一遍 FTF 数量变换把 qty 二次放大。
     """
     import copy as _copy
+    # lead 上游对齐：为领导批补"step1 等 跟随批 step2 紧邻上一步完成"的内部引用边
+    # （等效用户原先的双向普通引用；幂等，多 seed 反复调用不会叠加）。
+    try:
+        _inject_lead_upstream_refs(lots, get_product_flow_map(flows))
+    except Exception:
+        pass  # 注入失败不影响排程主流程
     # 保留调用方 lots 的原始快照，供第二遍使用（第一遍可能在 FTF 步骤改动 lot.qty）
     _orig_lots = _copy.deepcopy(lots)
     # 第一遍：不带预测，跑出真实释放时刻
