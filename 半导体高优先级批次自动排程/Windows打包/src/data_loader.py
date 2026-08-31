@@ -77,62 +77,75 @@ def _safe_str(row, col: str, default: str = "") -> str:
 
 
 def load_lot_constraints(filepath: str) -> list[LotConstraint]:
-    """加载 lot_constraints.csv。
+    """加载 lot_constraints.csv（五列关系声明：lot1 | step1 | lot2 | step2 | mod）。
 
-    基本格式（普通引用/偏移）：lot_name | start_step | reference_lot | reference_step | start_mod
-      语义：lot_name 的 start_step 在 reference_lot 的 reference_step 完成后才释放（可加偏移）。
+    列语义（设计文档 §3.0）：
+      - lot1：被约束/领导批次（等价旧列 lot_name）；
+      - step1：lot1 的衔接 step（等价旧列 start_step）；
+      - lot2：参照/配套批次（等价旧列 reference_lot）；
+      - step2：lot2 的对应 step（等价旧列 reference_step）；
+      - mod：关系修饰（等价旧列 start_mod），见 §3.1。
 
-    lead 格式（五列声明，mod=lead）：lot1 | step1 | lot2 | step2 | mod
-      通过同列的字段承载：lot_name=lot1(领导批), start_step=step1,
-      reference_lot=lot2(配套批), reference_step=step2, start_mod=lead。
-      含义：lot2.step2 尾随 lot1.step1（背靠背），lot1 上游链按 Q-time 回拉对齐。
-      加载时自动生成：
+    mod 含义：
+      - 空/0：普通引用——lot1.step1 在 lot2.step2 完成之后才释放；
+      - N（小时）：普通引用 + 偏移 N 小时；
+      - shift / shift_day：普通引用，等到下一班次/下一白班释放；
+      - lead：领导衔接——lot2.step2 尾随 lot1.step1（背靠背），把 lot1 上游链按 Q-time 回拉对齐。
+
+      加载时对 mod=lead 自动生成：
         - 闸A 内部引用边（挂到配套批 lot2）：lot2.step2 在 lot1.step1 完成之后才能开始，
           带 lead_id 标记（环检测/死锁判定跳过）。
         - LeadPair 记录（供回拉与终检使用）。
 
-    另：兼容解析 hold_period_N_start/end 多段扣留时段（活跃功能，保留）。
+    兼容旧表头（lot_name/start_step/reference_lot/reference_step/start_mod），
+    hold_period_N_start/end 多段扣留时段仍受支持（活跃功能）。
     """
     global LEAD_PAIRS
     LEAD_PAIRS = []
     df = _read_csv(filepath)
     constraints = []
     col_names = list(df.columns)
+
+    def _col(row, names, default=""):
+        for n in names:
+            if n in row and pd.notna(row.get(n)) and str(row.get(n)).strip() != "":
+                return str(row[n]).strip()
+        return default
+
     lead_idx = 0
     for _, row in df.iterrows():
-        lot_name = _safe_str(row, "lot_name")
-        if not lot_name:
+        lot1 = _col(row, ["lot1", "lot_name"])
+        if not lot1:
             continue
 
-        start_mod = _safe_str(row, "start_mod")
-        start_step = _safe_str(row, "start_step")
-        reference_lot = _safe_str(row, "reference_lot")
-        reference_step = _safe_str(row, "reference_step")
+        modv = _col(row, ["mod", "start_mod"])
+        step1 = _col(row, ["step1", "start_step"])
+        lot2 = _col(row, ["lot2", "reference_lot"])
+        step2 = _col(row, ["step2", "reference_step"])
 
-        if (start_mod or "").strip() == "lead":
-            # lead 声明：lot_name=lot1(领导), start_step=step1,
-            #           reference_lot=lot2(配套), reference_step=step2
-            if reference_lot and reference_step and start_step:
+        if modv == "lead":
+            # lead 声明：lot1(领导).step1 领导，lot2(配套).step2 尾随
+            if lot2 and step2 and step1:
                 lead_id = f"lead{lead_idx}"; lead_idx += 1
                 # 闸A：配套批 lot2 等 领导批 lot1.step1 完成之后才释放 lot2.step2
                 constraints.append(LotConstraint(
-                    lot_name=reference_lot,      # lot2（配套）
-                    reference_lot=lot_name,      # 等 lot1（领导）
-                    reference_step=start_step,   # lot1 的 step1
+                    lot_name=lot2,               # 挂到配套批（lot2）
+                    reference_lot=lot1,          # 等领导批（lot1）
+                    reference_step=step1,        # lot1 的 step1
                     start_mod=None,              # 空 mod = lot1.step1 完成时刻之后释放
-                    start_step=reference_step,   # lot2 的 step2
+                    start_step=step2,            # lot2 的 step2
                     lead_id=lead_id,
                 ))
                 LEAD_PAIRS.append(LeadPair(
-                    lot1=lot_name, step1=start_step,
-                    lot2=reference_lot, step2=reference_step,
+                    lot1=lot1, step1=step1,
+                    lot2=lot2, step2=step2,
                     lead_id=lead_id))
             continue  # lead 行本身不产生普通引用条目
 
-        reference_lot = reference_lot or None
-        reference_step = reference_step or None
-        start_mod = start_mod or None
-        start_step = start_step or None
+        reference_lot = lot2 or None
+        reference_step = step2 or None
+        start_mod = modv or None
+        start_step = step1 or None
 
         # 解析 hold_periods: 多列对 hold_period_N_start, hold_period_N_end
         hold_periods = []
@@ -146,7 +159,7 @@ def load_lot_constraints(filepath: str) -> list[LotConstraint]:
                     hold_periods.append((hs, he))
 
         constraints.append(LotConstraint(
-            lot_name=lot_name,
+            lot_name=lot1,
             reference_lot=reference_lot,
             reference_step=reference_step,
             start_mod=start_mod,

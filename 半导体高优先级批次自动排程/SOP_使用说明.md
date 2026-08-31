@@ -367,31 +367,32 @@
 
 **用途**：批次之间有联动关系——比如"后一批 `real1` 要等前一批 `PC1` 的某一步做完才能开始自己对应的某一步"。
 
-**列说明**：
+**列说明**（五列关系声明：`lot1 | step1 | lot2 | step2 | mod`）：
 
-| 列名                        | 含义                                                            |
-| ------------------------- | ------------------------------------------------------------- |
-| `lot_name`                | 被约束的批次                                                        |
-| `reference_lot`           | 参照批次（等谁）                                                      |
-| `reference_step`          | 参照批次的步骤（等到它做完）                                                |
-| `start_mod`               | 偏移：空/0=无；`0.5`/`1`/`2`/`4`=几小时后；`shift`=下一班次；`shift_day`=下一白班；`lead`=领导衔接（见下方"lead 领导衔接"） |
-| `start_step`              | 被约束批次从哪一步开始等                                                  |
-| `hold_period_N_start/end` | 可选的"扣留时段"（强制该批在某时段不可动）                                        |
+| 列名   | 含义                                                          |
+| ----- | ----------------------------------------------------------- |
+| `lot1` | 被约束的批次（旧列 `lot_name`）                                       |
+| `step1` | 被约束批次的衔接步（旧列 `start_step`）：等满足条件后从这一步开始            |
+| `lot2` | 参照批次（旧列 `reference_lot`）：等谁                                  |
+| `step2` | 参照批次的步骤（旧列 `reference_step`）：等到它做完                            |
+| `mod` | 偏移/修饰（旧列 `start_mod`）：空/`0`=无；`0.5`/`1`/`2`/`4`=几小时后；`shift`=下一班次；`shift_day`=下一白班；`lead`=领导衔接（见下方） |
+
+注：`hold_period_N_start/end`（可选的"扣留时段"强制该批某时段不可动）仍受支持，列可省略。
 
 **示例（2 行）**：
 
-| lot_name | reference_lot | reference_step | start_mod | start_step | hold_period_1_start | hold_period_1_end |
-| -------- | ------------- | -------------- | --------- | ---------- | ------------------- | ----------------- |
-| real1 | PC1 | A005-P1-FC-REFLOW | 0 | A005-R1-FC-REFLOW | | |
-| real1 | PC1 | A005-P1-UF-DISPENSE | 0 | A005-R1-UF-DISPENSE | | |
+| lot1 | step1 | lot2 | step2 | mod |
+| -------- | -------- | -------- | -------- | --------- |
+| real1 | A005-R1-FC-REFLOW | PC1 | A005-P1-FC-REFLOW | 0 |
+| real1 | A005-R1-UF-DISPENSE | PC1 | A005-P1-UF-DISPENSE | 0 |
 
 解读：批次 `real1` 的 `A005-R1-FC-REFLOW` 这一步，必须等参照批 `PC1` 的 `A005-P1-FC-REFLOW` 完成后才能开始（start\_mod=0，无偏移）；同理它的 `A005-R1-UF-DISPENSE` 要等 `PC1` 的 `A005-P1-UF-DISPENSE`。
 
-**lead 领导衔接（`start_mod=lead`，五列关系声明）**
+**lead 领导衔接（`start_mod=lead`）**
 
-在少数关键 step 上，让**领导批 lot1** 的 `step1` 做完后，**配套批 lot2** 的 `step2` **背靠背紧跟着做**（lot1 恒领先），且全程不超任何区间 Q-time、不在运行中的紧 Q 窗口内空等。一行声明复用原五列（列名不变，只是语义按"关系声明"理解）：
+在少数关键 step 上，让**领导批 lot1** 的 `step1` 做完后，**配套批 lot2** 的 `step2` **背靠背紧跟着做**（lot1 恒领先），且全程不超任何区间 Q-time、不在运行中的紧 Q 窗口内空等。同用五列声明：
 
-| lot1 (`lot_name`) | step1 (`start_step`) | lot2 (`reference_lot`) | step2 (`reference_step`) | mod (`start_mod`) |
+| lot1 | step1 | lot2 | step2 | mod |
 | -------- | -------- | -------- | -------- | -------- |
 | real1 | A005-R1-UF-DISPENSE | PC1 | A005-D1-UF-DISPENSE | lead |
 
