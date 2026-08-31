@@ -110,6 +110,7 @@ def schedule_optimized(
     tight_chain_threshold: int = None,
     qtight_safety_margin: int = None,
     chain_wait_safety: int = None,
+    cross_shift_avoid: bool = None,
     # ---- SA+Tabu 细调层（借鉴 meta_heuristic_before） ----
     refine_enabled: bool = True,
     refine_max_iterations: int = 60,
@@ -181,6 +182,7 @@ def schedule_optimized(
                 tight_chain_threshold=tight_chain_threshold,
                 qtight_safety_margin=qtight_safety_margin,
                 chain_wait_safety=chain_wait_safety,
+                cross_shift_avoid=cross_shift_avoid,
                 out_warnings=iter_warnings,
             )
         except Exception as e:
@@ -267,7 +269,8 @@ def schedule_optimized(
                     lot_order=lo, eqp_preferences=ep, chain_placement=ch,
                     tight_chain_threshold=tight_chain_threshold,
                     qtight_safety_margin=qtight_safety_margin,
-                    chain_wait_safety=chain_wait_safety)
+                    chain_wait_safety=chain_wait_safety,
+                    cross_shift_avoid=cross_shift_avoid)
             except Exception:
                 return None
             errs = validate_schedule(

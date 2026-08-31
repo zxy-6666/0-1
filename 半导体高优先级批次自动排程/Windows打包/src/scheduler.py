@@ -14,6 +14,7 @@ import logging
 import math
 import os
 import bisect
+import dataclasses
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -37,6 +38,9 @@ FAR_FUTURE = datetime(2099, 12, 31, 0, 0)
 SCHEDULE_WINDOW_DAYS = 365
 TIGHT_CHAIN_THRESHOLD = 240  # 紧链判定阈值（分钟）
 QTIGHT_SAFETY_MARGIN = 90  # 紧 Q-time 起点延迟的安全余量（分钟）：预留端步骤因设备竞争/换班被推后的缓冲
+CROSS_SHIFT_AVOID = True  # 紧 Q 链不跨班次（用户规则）：紧链相邻步骤（如 PLASMA→DISPENSE）
+# 的 Q 窗口若跨过班次切换时刻，把链首起点推后到班次之后，使整段链落在同一班次内。
+# best-effort：推后会撑破上游紧链或不可行时保留原排程并输出跨班次告警。可配置关闭。
 
 # 恒组批（together=true）等待凑批窗口（分钟）：到达同一"批次步骤"（如 CURE）的时间差在此
 # 窗口内的不同 Lot 会合并进同一次同炉治程（最多 max_lots/max_qty）。窗口越大越倾向凑满一炉
@@ -48,6 +52,35 @@ BATCH_WAIT_WINDOW = 240
 # 设备释放。若某一 Lot 连续达到该次数仍未成功，则放弃整链块（退回拆链/单步调度），保证调度
 # 终止——避免在单机瓶颈（如 UF-CURE 只剩 PKPOV001 一台）下无限磨步把"计算超时"。
 TIGHT_CHAIN_DEFER_MAX = 10
+
+# ---- 约束展开缓存（纯函数 + 内容 key，跨两遍/跨迭代复用，不改变结果）----
+# 三个展开函数只依赖约束数据内容与排程窗口，与 lot 顺序/迭代轮次无关；
+# schedule_optimized 每轮构造都会调用 schedule() 两遍，这里缓存可避免 40 轮
+# 重复展开同一批停机窗/时间窗（实测占生产路径约 1/3 耗时）。内容 key 保证
+# 换数据后不会误命中旧结果。
+_EXPAND_CACHE: dict = {}
+_EXPAND_CACHE_MAX = 64
+
+
+def _expand_cache_get(
+    cache_name: str,
+    constraints: list,
+    schedule_start: datetime,
+    schedule_end: datetime,
+    thunk,
+):
+    if not constraints:
+        return thunk()
+    key = (cache_name, tuple(tuple(dataclasses.astuple(c)) for c in constraints),
+           schedule_start, schedule_end)
+    hit = _EXPAND_CACHE.get(key)
+    if hit is not None:
+        return hit
+    out = thunk()
+    if len(_EXPAND_CACHE) >= _EXPAND_CACHE_MAX:
+        _EXPAND_CACHE.clear()
+    _EXPAND_CACHE[key] = out
+    return out
 
 
 def _is_parallel_eqp(eqp_id: str, special_eqp_map: dict) -> bool:
@@ -238,10 +271,6 @@ def _effective_chain_wait(
     且在中间步骤 CT 吃紧时自动压紧（借鉴 scheduler_before1 的 MIN_CHAIN_WAIT 动态压缩）。
     """
     priority_wait = float(get_step_wait_time(lot.priority[0], lot.priority[1], priority_wait_map))
-    # lead 跟随批（lot.references 含带 lead_id 的闸A 内部边）：链内不空等，
-    # 让衔接步贴齐领导批完成时刻（lead 回拉的前提，避免低优先级 wait 把跟随批越拖越远）。
-    if any(getattr(r, "lead_id", "") for r in (lot.references or [])):
-        priority_wait = 0.0
     if not chain_info:
         return priority_wait
     budget = _chain_gap_budget(
@@ -298,25 +327,29 @@ def _expand_time_windows(
 ) -> dict[str, list[tuple[datetime, datetime]]]:
     if schedule_end is None:
         schedule_end = schedule_start + timedelta(days=SCHEDULE_WINDOW_DAYS)
-    result: dict[str, list[tuple[datetime, datetime]]] = {}
-    for w in windows:
-        if not w.date_str and not w.week:
-            continue
-        try:
-            sh, sm = map(int, w.start_time_str.split(":"))
-            eh, em = map(int, w.end_time_str.split(":"))
-        except (ValueError, AttributeError):
-            continue
-        target_dates = _resolve_date_or_week(w.date_str, w.week, schedule_start, schedule_end)
-        for d in target_dates:
-            start_dt = d.replace(hour=sh, minute=sm, second=0, microsecond=0)
-            end_dt = d.replace(hour=eh, minute=em, second=0, microsecond=0)
-            if end_dt <= start_dt:
-                end_dt += timedelta(days=1)
-            result.setdefault(w.step_name, []).append((start_dt, end_dt))
-    for ivals in result.values():
-        ivals.sort(key=lambda x: x[0])
-    return result
+
+    def _impl() -> dict[str, list[tuple[datetime, datetime]]]:
+        result: dict[str, list[tuple[datetime, datetime]]] = {}
+        for w in windows:
+            if not w.date_str and not w.week:
+                continue
+            try:
+                sh, sm = map(int, w.start_time_str.split(":"))
+                eh, em = map(int, w.end_time_str.split(":"))
+            except (ValueError, AttributeError):
+                continue
+            target_dates = _resolve_date_or_week(w.date_str, w.week, schedule_start, schedule_end)
+            for d in target_dates:
+                start_dt = d.replace(hour=sh, minute=sm, second=0, microsecond=0)
+                end_dt = d.replace(hour=eh, minute=em, second=0, microsecond=0)
+                if end_dt <= start_dt:
+                    end_dt += timedelta(days=1)
+                result.setdefault(w.step_name, []).append((start_dt, end_dt))
+        for ivals in result.values():
+            ivals.sort(key=lambda x: x[0])
+        return result
+
+    return _expand_cache_get("time_windows", windows, schedule_start, schedule_end, _impl)
 
 
 def _expand_end_time_windows(
@@ -326,27 +359,31 @@ def _expand_end_time_windows(
 ) -> dict[str, list[tuple[datetime, datetime]]]:
     if schedule_end is None:
         schedule_end = schedule_start + timedelta(days=SCHEDULE_WINDOW_DAYS)
-    result: dict[str, list[tuple[datetime, datetime]]] = {}
-    for w in windows:
-        if not w.end_start_time_str or not w.end_end_time_str:
-            continue
-        if not w.end_date_str and not w.end_week:
-            continue
-        try:
-            sh, sm = map(int, w.end_start_time_str.split(":"))
-            eh, em = map(int, w.end_end_time_str.split(":"))
-        except (ValueError, AttributeError):
-            continue
-        target_dates = _resolve_date_or_week(w.end_date_str, w.end_week, schedule_start, schedule_end)
-        for d in target_dates:
-            start_dt = d.replace(hour=sh, minute=sm, second=0, microsecond=0)
-            end_dt = d.replace(hour=eh, minute=em, second=0, microsecond=0)
-            if end_dt <= start_dt:
-                end_dt += timedelta(days=1)
-            result.setdefault(w.step_name, []).append((start_dt, end_dt))
-    for ivals in result.values():
-        ivals.sort(key=lambda x: x[0])
-    return result
+
+    def _impl() -> dict[str, list[tuple[datetime, datetime]]]:
+        result: dict[str, list[tuple[datetime, datetime]]] = {}
+        for w in windows:
+            if not w.end_start_time_str or not w.end_end_time_str:
+                continue
+            if not w.end_date_str and not w.end_week:
+                continue
+            try:
+                sh, sm = map(int, w.end_start_time_str.split(":"))
+                eh, em = map(int, w.end_end_time_str.split(":"))
+            except (ValueError, AttributeError):
+                continue
+            target_dates = _resolve_date_or_week(w.end_date_str, w.end_week, schedule_start, schedule_end)
+            for d in target_dates:
+                start_dt = d.replace(hour=sh, minute=sm, second=0, microsecond=0)
+                end_dt = d.replace(hour=eh, minute=em, second=0, microsecond=0)
+                if end_dt <= start_dt:
+                    end_dt += timedelta(days=1)
+                result.setdefault(w.step_name, []).append((start_dt, end_dt))
+        for ivals in result.values():
+            ivals.sort(key=lambda x: x[0])
+        return result
+
+    return _expand_cache_get("end_windows", windows, schedule_start, schedule_end, _impl)
 
 
 def _expand_shift_change_times(
@@ -356,24 +393,28 @@ def _expand_shift_change_times(
 ) -> list[tuple[datetime, datetime]]:
     if schedule_end is None:
         schedule_end = schedule_start + timedelta(days=SCHEDULE_WINDOW_DAYS)
-    result: list[tuple[datetime, datetime]] = []
-    for w in windows:
-        if not w.date_str and not w.week:
-            continue
-        try:
-            sh, sm = map(int, w.start_time_str.split(":"))
-            eh, em = map(int, w.end_time_str.split(":"))
-        except (ValueError, AttributeError):
-            continue
-        target_dates = _resolve_date_or_week(w.date_str, w.week, schedule_start, schedule_end)
-        for d in target_dates:
-            start_dt = d.replace(hour=sh, minute=sm, second=0, microsecond=0)
-            end_dt = d.replace(hour=eh, minute=em, second=0, microsecond=0)
-            if end_dt <= start_dt:
-                end_dt += timedelta(days=1)
-            result.append((start_dt, end_dt))
-    result.sort(key=lambda x: x[0])
-    return result
+
+    def _impl() -> list[tuple[datetime, datetime]]:
+        result: list[tuple[datetime, datetime]] = []
+        for w in windows:
+            if not w.date_str and not w.week:
+                continue
+            try:
+                sh, sm = map(int, w.start_time_str.split(":"))
+                eh, em = map(int, w.end_time_str.split(":"))
+            except (ValueError, AttributeError):
+                continue
+            target_dates = _resolve_date_or_week(w.date_str, w.week, schedule_start, schedule_end)
+            for d in target_dates:
+                start_dt = d.replace(hour=sh, minute=sm, second=0, microsecond=0)
+                end_dt = d.replace(hour=eh, minute=em, second=0, microsecond=0)
+                if end_dt <= start_dt:
+                    end_dt += timedelta(days=1)
+                result.append((start_dt, end_dt))
+        result.sort(key=lambda x: x[0])
+        return result
+
+    return _expand_cache_get("shift_change", windows, schedule_start, schedule_end, _impl)
 
 
 def _expand_eqp_constraints(
@@ -383,23 +424,27 @@ def _expand_eqp_constraints(
 ) -> dict[str, list[tuple[datetime, datetime]]]:
     if schedule_end is None:
         schedule_end = schedule_start + timedelta(days=SCHEDULE_WINDOW_DAYS)
-    result: dict[str, list[tuple[datetime, datetime]]] = {}
-    for c in constraints:
-        if not c.date_str and not c.week:
-            continue
-        try:
-            sh, sm = map(int, c.start_time_str.split(":"))
-            eh, em = map(int, c.end_time_str.split(":"))
-        except (ValueError, AttributeError):
-            continue
-        target_dates = _resolve_date_or_week(c.date_str, c.week, schedule_start, schedule_end)
-        for d in target_dates:
-            start_dt = d.replace(hour=sh, minute=sm, second=0, microsecond=0)
-            end_dt = d.replace(hour=eh, minute=em, second=0, microsecond=0)
-            if end_dt <= start_dt:
-                end_dt += timedelta(days=1)
-            result.setdefault(c.eqp_name, []).append((start_dt, end_dt))
-    return result
+
+    def _impl() -> dict[str, list[tuple[datetime, datetime]]]:
+        result: dict[str, list[tuple[datetime, datetime]]] = {}
+        for c in constraints:
+            if not c.date_str and not c.week:
+                continue
+            try:
+                sh, sm = map(int, c.start_time_str.split(":"))
+                eh, em = map(int, c.end_time_str.split(":"))
+            except (ValueError, AttributeError):
+                continue
+            target_dates = _resolve_date_or_week(c.date_str, c.week, schedule_start, schedule_end)
+            for d in target_dates:
+                start_dt = d.replace(hour=sh, minute=sm, second=0, microsecond=0)
+                end_dt = d.replace(hour=eh, minute=em, second=0, microsecond=0)
+                if end_dt <= start_dt:
+                    end_dt += timedelta(days=1)
+                result.setdefault(c.eqp_name, []).append((start_dt, end_dt))
+        return result
+
+    return _expand_cache_get("eqp", constraints, schedule_start, schedule_end, _impl)
 
 
 # ============================================================
@@ -602,6 +647,29 @@ def _check_qtime_end_for_step(
 # ============================================================
 # Q-time 前瞻：紧窗口起点延迟
 # ============================================================
+
+def _cross_shift_push_target(
+    s_start: datetime,
+    e_slot: datetime,
+    shift_change_intervals: list,
+) -> Optional[datetime]:
+    """紧 Q 链不跨班次（用户规则）：S 若落在 E 所在班次的"紧邻前一个班次"内
+    （即 S→E 的窗口跨过班次切换时刻、且两步骤同日相邻班次），返回应把 S 起点
+    推后的目标时刻 = E 所在班次的开始；否则返回 None（S 与 E 已同班次，或
+    S 距 E 超过一个班次——跨日/多日链不适用本规则，避免把链整体推迟一整天）。
+    """
+    if not shift_change_intervals:
+        return None
+    e_shift_start = None
+    for _ws, _wse in shift_change_intervals:
+        if _ws <= e_slot:
+            e_shift_start = _ws  # e_slot 之前最近（最后）的班次边界 = E 所在班次开始
+    if e_shift_start is None:
+        return None
+    if s_start < e_shift_start and (e_shift_start - s_start) <= timedelta(hours=12):
+        return e_shift_start
+    return None
+
 
 def _tight_qtime_target_start(
     lot: Lot,
@@ -853,6 +921,56 @@ def _tight_qtime_target_start(
         # 安全余量仅在紧链保留（松链保留余量易把起点推进设备不可用段）
         margin = QTIGHT_SAFETY_MARGIN if is_tight else 0
         tgt = tgt + timedelta(minutes=margin)
+        # ---- 紧 Q 链不跨班次（用户规则）：Q 紧时链内相邻步骤不跨班次切换 ----
+        # 用"生效起点"评估：max(自然起点, Q 目标)——Q 目标本身可能已把 S 推到 E 当日，
+        # 此时再判断 S 是否落在 E 的紧邻前一个班次内。推后只缩短 S→E 窗口（Q 仍满足）；
+        # 仅当不撑破 S 上游的紧链、且 S 的设备在班次边界时刻可用时生效（best-effort，
+        # 否则保留原排程并输出跨班次告警）。设备不可用时跳过：避免多条链同时抢同一
+        # 班次起点造成级联推挤（PEDES 2 台、4 条 PLASMA 链同抢 08:30 的实测根因）。
+        if is_tight and CROSS_SHIFT_AVOID and shift_change_intervals:
+            _eff_start = tgt if tgt > s_start else s_start
+            _st = _cross_shift_push_target(_eff_start, e_slot, shift_change_intervals)
+            if _st is not None:
+                # 设备可用守卫：S 的设备在 _st 时刻必须有可用槽（否则推后必被挤到
+                # 更晚、不再干净对齐班次起点，且会拖累整链）
+                if step.eqp_ids:
+                    _free_at_bnd = datetime.max
+                    for _eid in step.eqp_ids:
+                        _c = _find_earliest_slot(
+                            machine_intervals.get(_eid, []), _st, timedelta(minutes=ct))
+                        if _c < _free_at_bnd:
+                            _free_at_bnd = _c
+                    if _free_at_bnd == datetime.max or _free_at_bnd > _st + timedelta(minutes=5):
+                        _st = None
+                # 全程窗口保护：S 推后会把 E（及以 E 为终点的 Q 窗口终点）一起推后最多
+                # delay。用 ready_time−步间等待 作为"上游锚点"估算各以 E 为终点的
+                # Q 窗口当前占用：占用 + delay > 预算则放弃推后（避免把本就在
+                # 临界/紧贴 1440 的宽松链推出窗外——手动调整/pin 场景实测根因）。
+                # 跳过 S→E 自身规则（推后只缩短该窗口，不参与保护）。
+                if _st is not None and ready_time is not None:
+                    _delay = (_st - _eff_start)
+                    if _delay > timedelta(0):
+                        _win_start_ref = ready_time - timedelta(
+                            minutes=get_step_wait_time(lot.priority[0], lot.priority[1],
+                                                       priority_wait_map))
+                        for _q3 in product_qtimes or []:
+                            _D3 = _q3.max_duration
+                            if (_q3.end_step != end_flow.step_name or not _D3
+                                    or _q3.start_step == step.step_name):
+                                continue
+                            _usage = (e_slot - _win_start_ref).total_seconds() / 60.0
+                            if _usage + _delay.total_seconds() / 60.0 > _D3:
+                                _st = None
+                                break
+                for _q2 in product_qtimes or []:
+                    _D2 = _q2.max_duration
+                    if (_q2.end_step == step.step_name and _D2
+                            and _D2 <= TIGHT_CHAIN_THRESHOLD
+                            and (_st - ready_time).total_seconds() / 60.0 > _D2):
+                        _st = None      # 推后会撑破上游紧链 → 放弃（保留跨班次告警）
+                        break
+                if _st is not None and _st > tgt:
+                    tgt = _st
         if tgt > s_start and (target_time is None or tgt > target_time):
             target_time = tgt
 
@@ -892,17 +1010,22 @@ def _find_earliest_slot(
         return True
 
     candidate = lot_ready
+    ptr = 0            # 单调扫描指针：occupied[0:ptr] 均满足 iv_end <= candidate
+    n = len(occupied)
     while True:
-        # 完整时长不得与已占用区间重叠
+        # 完整时长不得与已占用区间重叠（指针只前进，结果与原全量重扫一致）
         end = candidate + duration
         bumped = False
-        for iv_start, iv_end in occupied:
+        while ptr < n:
+            iv_start, iv_end = occupied[ptr]
             if candidate >= iv_end:
+                ptr += 1
                 continue
             if end > iv_start:
                 candidate = iv_end
                 bumped = True
                 break
+            break       # 后续区间 start 更大，不可能再重叠
         if bumped:
             continue
         if _start_ok(candidate):
@@ -1767,6 +1890,22 @@ def _precompute_whole_chain_block(
                 _base = _g_ends[_k - 1] + timedelta(minutes=step_wait)
                 if _lb is not None and _lb > _base:
                     _base = _lb
+            # ---- 紧 Q 链不跨班次（用户规则）：链内紧 Q 对 S→E 若跨班次，S 起点推后 ----
+            # 保守估计 E 窗口终点 = S.start + CT_S + D（E 必不晚于该时刻）。推后只缩短
+            # S→E 窗口（Q 仍满足）；若推后使链内/上游 Q 破裂，链尾校验会令正向贪心
+            # 失败 → 回退倒排保底（保留跨班次告警）。
+            if CROSS_SHIFT_AVOID and shift_change_intervals:
+                for _q in chain_qs:
+                    _Dq = _q.max_duration
+                    if _Dq is None or _Dq > TIGHT_CHAIN_THRESHOLD:
+                        continue
+                    if _q.start_step != _s.step_name:
+                        continue
+                    _st_b = _cross_shift_push_target(
+                        _base, _base + timedelta(minutes=_ct + _Dq), shift_change_intervals)
+                    if _st_b is not None and _st_b > _base:
+                        _base = _st_b
+                    break
             if _s.eqp_ids:
                 _cands = []
                 for _e in _s.eqp_ids:
@@ -3866,6 +4005,56 @@ def _lead_back_shift(
     return le, ee
 
 
+def _detect_qtime_cross_shift(
+    lot_entries: list,
+    qtimes: list,
+    shift_times: list,
+) -> list[str]:
+    """紧 Q 链跨班次告警：Q-time ≤ 紧链阈值 的相邻步骤若跨过班次切换时刻
+    （如 PLASMA 在班次 A 末完成、DISPENSE 排到班次 B 初），输出风险提示。
+
+    仅告警，不改变排程结果（跨班次约束机制待定义，见设计文档 §8）。
+    """
+    warns: list[str] = []
+    if not shift_times:
+        return warns
+    st_mins = sorted(s[0] * 60 + s[1] for s in shift_times)
+
+    def _crosses_shift(a: datetime, b: datetime) -> bool:
+        if b <= a:
+            return False
+        day = a.date()
+        cur = a
+        for _ in range(3):                       # 最多查 3 天
+            for m in st_mins:
+                t = datetime(day.year, day.month, day.day, m // 60, m % 60)
+                if t > cur:
+                    return t < b                 # 切换时刻落在 (a, b) 内 = 跨班次
+            day = day + timedelta(days=1)
+            cur = datetime(day.year, day.month, day.day, 0, 0)
+            if cur >= b:
+                return False
+        return False
+
+    by_lot: dict[str, list] = {}
+    for e in lot_entries:
+        by_lot.setdefault(e.lot_name, []).append(e)
+    for q in qtimes:
+        if q.max_duration is None or q.max_duration > TIGHT_CHAIN_THRESHOLD:
+            continue
+        for lot, es in by_lot.items():
+            se = next((e for e in es if e.step_name == q.start_step), None)
+            ee = next((e for e in es if e.step_name == q.end_step), None)
+            if se is None or ee is None:
+                continue
+            if _crosses_shift(se.end_time, ee.start_time):
+                warns.append(
+                    f"紧 Q 链跨班次: {lot} {q.start_step}→{q.end_step} "
+                    f"{se.end_time:%m/%d %H:%M} → {ee.start_time:%m/%d %H:%M} "
+                    f"(预算 {q.max_duration}min)")
+    return warns[:10]
+
+
 def schedule(
     lots: list[Lot],
     flows: list[FlowStep],
@@ -3889,6 +4078,7 @@ def schedule(
     tight_chain_threshold: Optional[int] = None,
     qtight_safety_margin: Optional[int] = None,
     chain_wait_safety: Optional[int] = None,
+    cross_shift_avoid: Optional[bool] = None,
     out_warnings: Optional[list] = None,
 ) -> tuple[list[ScheduleEntry], list[EqpScheduleEntry], list[QTimeAlert]]:
     """两遍排程（Fix3）：把"第一遍实际释放时刻"回喂第二遍作为预测锚点。
@@ -3929,6 +4119,7 @@ def schedule(
         tight_chain_threshold=tight_chain_threshold,
         qtight_safety_margin=qtight_safety_margin,
         chain_wait_safety=chain_wait_safety,
+        cross_shift_avoid=cross_shift_avoid,
         out_warnings=None)
     _forecast = _collect_ref_release_forecast(_le1, lots, shift_times)
     if ref_release_forecast:
@@ -3952,6 +4143,7 @@ def schedule(
         tight_chain_threshold=tight_chain_threshold,
         qtight_safety_margin=qtight_safety_margin,
         chain_wait_safety=chain_wait_safety,
+        cross_shift_avoid=cross_shift_avoid,
         out_warnings=out_warnings)
     # 两遍都比，取更优者。择优键为四元组，优先级从高到低：
     #   1) 缺失步骤数（最硬性：丢步骤的排程非法；且丢步会让 Q-time 告警变少，
@@ -3983,6 +4175,15 @@ def schedule(
     _best_le, _best_ee = _lead_back_shift(
         lots=_orig_lots, lot_entries=_best_le, eqp_entries=_best_ee,
         flows=flows, window_end=_win + timedelta(days=2))
+    # ---- 紧 Q 链跨班次风险告警（仅提示，不改变结果）----
+    try:
+        _cs = _detect_qtime_cross_shift(_best_le, qtimes, shift_times)
+        for _w in _cs:
+            logger.warning("[跨班次风险] %s", _w)
+        if out_warnings is not None:
+            out_warnings.extend(_cs)
+    except Exception:
+        pass
     return _best_le, _best_ee, _best_qa
 
 
@@ -4009,6 +4210,7 @@ def _run_schedule_pass(
     tight_chain_threshold: Optional[int] = None,
     qtight_safety_margin: Optional[int] = None,
     chain_wait_safety: Optional[int] = None,
+    cross_shift_avoid: Optional[bool] = None,
     out_warnings: Optional[list] = None,
 ) -> tuple[list[ScheduleEntry], list[EqpScheduleEntry], list[QTimeAlert]]:
     """执行启发式排程。
@@ -4042,13 +4244,14 @@ def _run_schedule_pass(
     if special_lot_step_lookup is None:
         special_lot_step_lookup = {}
 
-    global TIGHT_CHAIN_THRESHOLD, QTIGHT_SAFETY_MARGIN, CHAIN_WAIT_SAFETY
+    global TIGHT_CHAIN_THRESHOLD, QTIGHT_SAFETY_MARGIN, CHAIN_WAIT_SAFETY, CROSS_SHIFT_AVOID
     # 每次调用都写入"生效值"（参数为 None 时恢复模块默认），
     # 避免上一次调用残留的自定义值污染后续以默认参数运行的调用
     # （同进程多请求 / 测试先后调用场景）。
     TIGHT_CHAIN_THRESHOLD = tight_chain_threshold if tight_chain_threshold is not None else 240
     QTIGHT_SAFETY_MARGIN = qtight_safety_margin if qtight_safety_margin is not None else 90
     CHAIN_WAIT_SAFETY = chain_wait_safety if chain_wait_safety is not None else 20
+    CROSS_SHIFT_AVOID = cross_shift_avoid if cross_shift_avoid is not None else True
 
     now = datetime.now()
 
@@ -5055,6 +5258,13 @@ def _run_schedule_pass(
             state["done"] = True
         else:
             step_wait = _effective_chain_wait(lot, chain_info, priority_wait_map)
+            # lead 跟随批的衔接步：lot 已在等待领导批完成，满足条件即开始，不再额外等待
+            # （wait time 是 lot 内部相邻 step 的机制，衔接步本身除外——衔接由引用边驱动）
+            _nxt = state["remaining_steps"][state["step_index"]].step_name \
+                if state["step_index"] < len(state["remaining_steps"]) else None
+            if _nxt and any(getattr(r, "lead_id", "") and r.start_step == _nxt
+                            for r in (lot.references or [])):
+                step_wait = 0.0
             base_ready = end_time + timedelta(minutes=step_wait)
             state["_base_ready_time"] = base_ready
             state["ready_time"] = base_ready
