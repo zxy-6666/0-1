@@ -23,7 +23,8 @@ import logging
 logging.getLogger("scheduler").setLevel(logging.CRITICAL)
 logging.disable(logging.CRITICAL)
 
-from models import Lot, FlowStep, QTimeConstraint, LotConstraint, LeadPair, ManualAdjust
+from models import (Lot, FlowStep, QTimeConstraint, LotConstraint, LeadPair, ManualAdjust,
+                    EqpConstraint, StepTimeWindow)
 from scheduler import schedule
 from validation import validate_schedule
 from data_loader import get_product_flow_map
@@ -75,12 +76,13 @@ def attach_lead(follow, lead_lot, step="DISPENSE", lead_id="l0"):
         reference_step=step, start_step=step, start_mod=None, lead_id=lead_id)]
 
 
-def run_sched(lots, flows, qtimes, manual_adjusts=None):
+def run_sched(lots, flows, qtimes, manual_adjusts=None, eqp_constraints=None,
+              step_windows=None, shift_change=None):
     return schedule(
         lots=lots, flows=flows, ct_lookup=CT, qtimes=qtimes, shift_times=ST,
         ftf_qty_change=None, special_lot_step_lookup=None, priority_wait_map={},
-        eqp_constraints=[], step_time_window_constraints=[],
-        shift_change_times=[], manual_adjusts=manual_adjusts or [],
+        eqp_constraints=eqp_constraints or [], step_time_window_constraints=step_windows or [],
+        shift_change_times=shift_change or [], manual_adjusts=manual_adjusts or [],
         special_eqp_map={}, resolve_max_iterations=10)
 
 
@@ -249,6 +251,53 @@ def gen_scenario_K(rng):
     return [ld, fl, n1, n2], FLOW_WIDE, Q_LOOSE, None
 
 
+def gen_scenario_L(rng):
+    """lead + 设备不可用时段（eqp_constraints）：DISPENSE 设备每晚 22:00-08:30 停机，
+    多对 lead 的 DISPENSE 被挤到白班窗口 → 验证 lead 回拉在设备窗下不超 Q、不跨班次死锁。"""
+    eqp = [EqpConstraint("EQP-DISP", "22:00", "08:30", "-1")]
+    lots = []
+    n_pairs = rng.choice([2, 3])
+    for i in range(n_pairs):
+        d = rng.uniform(0.0, 3.0)
+        ld = mk_lot(f"DLEAD{i}", timedelta(hours=i * 6), priority=(1, 1))
+        fl = mk_lot(f"DFOLLOW{i}", timedelta(hours=i * 6 + d), priority=(3, 1))
+        attach_lead(fl, ld, lead_id=f"l{i}")
+        lots += [ld, fl]
+    return lots, FLOW, Q_TIGHT, None, eqp
+
+
+def gen_scenario_M(rng):
+    """lead + step_time_window：DISPENSE 步骤只能在 08:30-22:00 之间开始（白班时间窗），
+    PLASMA 只能 08:00-22:00 开始 → 链被时间窗分段，验证 lead 回拉在时间窗下不超 Q。"""
+    win = [StepTimeWindow("DISPENSE", "08:30", "22:00", "-1"),
+           StepTimeWindow("PLASMA", "08:00", "22:00", "-1")]
+    lots = []
+    n_pairs = rng.choice([2, 3])
+    for i in range(n_pairs):
+        d = rng.uniform(0.0, 2.0)
+        ld = mk_lot(f"WLEAD{i}", timedelta(hours=i * 6), priority=(1, 1))
+        fl = mk_lot(f"WFOLLOW{i}", timedelta(hours=i * 6 + d), priority=(3, 1))
+        attach_lead(fl, ld, lead_id=f"w{i}")
+        lots += [ld, fl]
+    return lots, FLOW, Q_TIGHT, None, None, win
+
+
+def gen_scenario_N(rng):
+    """多批次 Q-time 区间相互引用：3 对 lead 且衔接步骤不同（BAKE/PLASMA/DISPENSE），
+    每条 lead 的衔接步都被夹在 Q-time 区间内（如 BAKE lead 夹在 BAKE→PLASMA、
+    PLASMA lead 夹在 PLASMA→DISPENSE、DISPENSE lead 夹在 DISPENSE→CURE），
+    多批 Q 区间互相交织 → 验证 lead 相位对齐 + 各段 Q 都不超。"""
+    lots = []
+    steps = ["BAKE", "PLASMA", "DISPENSE"]
+    for i, st in enumerate(steps):
+        d = rng.uniform(0.0, 2.0)
+        ld = mk_lot(f"QLEAD{i}", timedelta(hours=i * 5), priority=(1, 1))
+        fl = mk_lot(f"QFOLLOW{i}", timedelta(hours=i * 5 + d), priority=(3, 1))
+        attach_lead(fl, ld, step=st, lead_id=f"q{i}")
+        lots += [ld, fl]
+    return lots, FLOW_WIDE, Q_TIGHT, None
+
+
 SCENARIOS = {
     "A_single_loose": gen_scenario_A,
     "B_tight_q": gen_scenario_B,
@@ -261,6 +310,9 @@ SCENARIOS = {
     "I_leader_late": gen_scenario_I,
     "J_long_ct": gen_scenario_J,
     "K_mixed_ref": gen_scenario_K,
+    "L_eqp_unavailable": gen_scenario_L,
+    "M_special_windows": gen_scenario_M,
+    "N_multi_q_cross_ref": gen_scenario_N,
 }
 
 # 每场景可容忍的校验错误条目上限（比例 × cases，向下取整）。默认 0（任何错误即 FAIL）。
@@ -296,12 +348,16 @@ def main():
             seed = seed0 * 1000 + k
             r = random.Random(seed + hash(name) % 100000)
             try:
-                lots, flows, qtimes, ma = gen(r)
+                res = gen(r)
+                lots, flows, qtimes, ma = res[0], res[1], res[2], res[3]
+                eqp = res[4] if len(res) > 4 else None
+                win = res[5] if len(res) > 5 else None
+                shc = res[6] if len(res) > 6 else None
             except Exception as e:
                 crash += 1
                 continue
             try:
-                le, ee, qa = run_sched(lots, flows, qtimes, ma)
+                le, ee, qa = run_sched(lots, flows, qtimes, ma, eqp, win, shc)
             except Exception as e:
                 crash += 1
                 continue

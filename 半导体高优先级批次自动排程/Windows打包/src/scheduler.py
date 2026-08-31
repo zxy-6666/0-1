@@ -3476,6 +3476,53 @@ def _count_ref_violations(
     cons = []
     for l in lots:
         for ref in l.references or []:
+            # lead 上游对齐引用（lead_id 带 "-u" 后缀）是相位对齐软目标，不计入
+            # "闸A/普通引用"硬违背（由 _count_lead_u_violations 单独统计、取优时
+            # 置于 Q-time 之后——Q-time 红线优先于对齐软约束）。
+            if getattr(ref, "lead_id", "") and str(ref.lead_id).endswith("-u"):
+                continue
+            cons.append(LotConstraint(
+                lot_name=l.lot_name, reference_lot=ref.reference_lot,
+                reference_step=ref.reference_step, start_mod=ref.start_mod,
+                start_step=ref.start_step, hold_periods=ref.hold_periods))
+    if not cons:
+        return 0
+    return len(_check_references(lot_entries, cons, shift_times or []))
+
+
+def _count_lead_u_violations(
+    lot_entries: list,
+    lots: list,
+    shift_times: list,
+) -> int:
+    """统计 lead 上游对齐（-u 软引用）违背数（取优第 5 优先级，排在 Q-time 之后）。"""
+    from validation import _check_references
+    cons = []
+    for l in lots:
+        for ref in l.references or []:
+            if not (getattr(ref, "lead_id", "") and str(ref.lead_id).endswith("-u")):
+                continue
+            cons.append(LotConstraint(
+                lot_name=l.lot_name, reference_lot=ref.reference_lot,
+                reference_step=ref.reference_step, start_mod=ref.start_mod,
+                start_step=ref.start_step, hold_periods=ref.hold_periods))
+    if not cons:
+        return 0
+    return len(_check_references(lot_entries, cons, shift_times or []))
+
+
+def _count_lead_u_violations(
+    lot_entries: list,
+    lots: list,
+    shift_times: list,
+) -> int:
+    """统计 lead 上游对齐（-u 软引用）违背数（取优第 5 优先级，排在 Q-time 之后）。"""
+    from validation import _check_references
+    cons = []
+    for l in lots:
+        for ref in l.references or []:
+            if not (getattr(ref, "lead_id", "") and str(ref.lead_id).endswith("-u")):
+                continue
             cons.append(LotConstraint(
                 lot_name=l.lot_name, reference_lot=ref.reference_lot,
                 reference_step=ref.reference_step, start_mod=ref.start_mod,
@@ -4155,13 +4202,15 @@ def schedule(
     # 手动调整场景）。
     _r1 = _count_ref_violations(_le1, _orig_lots, shift_times)
     _r2 = _count_ref_violations(_le2, _orig_lots, shift_times)
+    _u1 = _count_lead_u_violations(_le1, _orig_lots, shift_times)
+    _u2 = _count_lead_u_violations(_le2, _orig_lots, shift_times)
     _m1 = _count_missing_steps(_le1, _orig_lots, flows)
     _m2 = _count_missing_steps(_le2, _orig_lots, flows)
     _n1 = len([a for a in _qa1 if a.status != "OK"])
     _n2 = len([a for a in _qa2 if a.status != "OK"])
     _o1 = sum(getattr(a, "over_minutes", 0) for a in _qa1 if a.status != "OK")
     _o2 = sum(getattr(a, "over_minutes", 0) for a in _qa2 if a.status != "OK")
-    if (_m1, _r1, _n1, _o1) <= (_m2, _r2, _n2, _o2):
+    if (_m1, _r1, _n1, _o1, _u1) <= (_m2, _r2, _n2, _o2, _u2):
         _best_le, _best_ee, _best_qa = _le1, _ee1, _qa1
     else:
         _best_le, _best_ee, _best_qa = _le2, _ee2, _qa2
