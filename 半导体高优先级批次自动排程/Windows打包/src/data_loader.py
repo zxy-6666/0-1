@@ -90,12 +90,15 @@ def load_lot_constraints(filepath: str) -> list[LotConstraint]:
       - 空/0：普通引用——lot1.step1 在 lot2.step2 完成之后才释放；
       - N（小时）：普通引用 + 偏移 N 小时；
       - shift / shift_day：普通引用，等到下一班次/下一白班释放；
-      - lead：领导衔接——lot2.step2 尾随 lot1.step1（背靠背），把 lot1 上游链按 Q-time 回拉对齐。
+      - lead：领导衔接——**lot2 为领导批（leading lot，在前面跑）**，
+        lot1 为跟随批（主点）背靠背尾随：lot1.step1 紧跟 lot2.step2 之后开始，
+        并把领导批 lot2 上游链按 Q-time 回拉对齐（不超任何区间 Q、不在紧 Q 窗口空等）。
 
-      加载时对 mod=lead 自动生成：
-        - 闸A 内部引用边（挂到配套批 lot2）：lot2.step2 在 lot1.step1 完成之后才能开始，
+      加载时对 mod=lead 自动生成（内部统一为"领导批在前、配套批尾随"）：
+        - 闸A 内部引用边（挂到跟随批 lot1）：lot1.step1 在 lot2.step2 完成之后才能开始，
           带 lead_id 标记（环检测/死锁判定跳过）。
-        - LeadPair 记录（供回拉与终检使用）。
+        - LeadPair 记录：lot1=用户声明的 lot2（领导批）、lot2=用户声明的 lot1（跟随批），
+          供回拉与终检使用。
 
     兼容旧表头（lot_name/start_step/reference_lot/reference_step/start_mod），
     hold_period_N_start/end 多段扣留时段仍受支持（活跃功能）。
@@ -124,21 +127,25 @@ def load_lot_constraints(filepath: str) -> list[LotConstraint]:
         step2 = _col(row, ["step2", "reference_step"])
 
         if modv == "lead":
-            # lead 声明：lot1(领导).step1 领导，lot2(配套).step2 尾随
+            # lead 声明（角色反转，用户视角）：lot1 为"主点"（主要关注批次）、尾随在前跑的 lot2。
+            #   lot2（leading lot）在前面跑：lot2.step2 先完成；
+            #   lot1（跟随批）背靠背尾随：lot1.step1 紧接着开始。
+            # 内部统一为"领导批在前、配套批尾随"（LeadPair.lot1=领导批）：
+            #   LeadPair.lot1 ← 用户声明的 lot2（领导批），LeadPair.lot2 ← 用户声明的 lot1（跟随批）。
             if lot2 and step2 and step1:
                 lead_id = f"lead{lead_idx}"; lead_idx += 1
-                # 闸A：配套批 lot2 等 领导批 lot1.step1 完成之后才释放 lot2.step2
+                # 闸A：跟随批 lot1 等 领导批 lot2.step2 完成之后才释放 lot1.step1
                 constraints.append(LotConstraint(
-                    lot_name=lot2,               # 挂到配套批（lot2）
-                    reference_lot=lot1,          # 等领导批（lot1）
-                    reference_step=step1,        # lot1 的 step1
-                    start_mod=None,              # 空 mod = lot1.step1 完成时刻之后释放
-                    start_step=step2,            # lot2 的 step2
+                    lot_name=lot1,               # 挂到跟随批（lot1）
+                    reference_lot=lot2,          # 等领导批（lot2）
+                    reference_step=step2,        # lot2 的 step2
+                    start_mod=None,              # 空 mod = lot2.step2 完成时刻之后释放
+                    start_step=step1,            # lot1 的 step1
                     lead_id=lead_id,
                 ))
                 LEAD_PAIRS.append(LeadPair(
-                    lot1=lot1, step1=step1,
-                    lot2=lot2, step2=step2,
+                    lot1=lot2, step1=step2,      # 领导批（内部 lot1）= 用户声明的 lot2
+                    lot2=lot1, step2=step1,      # 配套批（内部 lot2）= 用户声明的 lot1
                     lead_id=lead_id))
             continue  # lead 行本身不产生普通引用条目
 

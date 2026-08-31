@@ -262,11 +262,61 @@ def test_lead_health_check():
     check("health: 热启动太靠后告警", any("回拉失效" in w and "LEAD" in w for w in o), str(o))
 
 
+def test_lead_loader_role_swap():
+    """loader 角色反转（用户视角）：五列声明 lot1=主点、lot2=leading lot。
+    mod=lead 时：闸A 挂到跟随批 lot1（等 lot2 的 step2 完成）；
+    LeadPair 内部交换为 lot1=用户声明的 lot2（领导批）、lot2=用户声明的 lot1（跟随批）。"""
+    print("\n=== test_lead_loader_role_swap ===")
+    import tempfile, os
+    import data_loader as dl
+    csv = ("lot1\tstep1\tlot2\tstep2\tmod\n"
+           "LEAD\tDISPENSE\tFOLLOW\tDISPENSE\tlead\n")
+    f = tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, encoding="utf-8")
+    f.write(csv); f.close()
+    try:
+        cs = dl.load_lot_constraints(f.name)
+        lps = list(dl.LEAD_PAIRS)
+    finally:
+        os.unlink(f.name)
+
+    # 闸A：跟随批 LEAD.DISPENSE 等 领导批 FOLLOW.DISPENSE 完成
+    gate = [c for c in cs if c.lot_name == "LEAD" and c.lead_id]
+    check("loader: 闸A 挂到跟随批 lot1(LEAD) 等 领导批 FOLLOW.DISPENSE",
+          len(gate) == 1 and gate[0].reference_lot == "FOLLOW"
+          and gate[0].reference_step == "DISPENSE"
+          and gate[0].start_step == "DISPENSE", str(gate))
+
+    # LeadPair 内部交换：lot1=FOLLOW(领导批)、lot2=LEAD(跟随批)
+    check("loader: LeadPair 内部交换 (lot1=FOLLOW领导, lot2=LEAD跟随)",
+          len(lps) == 1 and lps[0].lot1 == "FOLLOW" and lps[0].step1 == "DISPENSE"
+          and lps[0].lot2 == "LEAD" and lps[0].step2 == "DISPENSE", str(lps))
+
+    # 交换后经 scheduler 排程：跟随批 LEAD.DISPENSE 不早于 领导批 FOLLOW.DISPENSE 完成（闸A）
+    _dcopy, flow, ct, qtimes, lead, follow = _make_backshift_ctx()
+    # 用户视角：LEAD=主点(跟随)，FOLLOW=leading(领导在前跑)；按 loader 内部角色构造
+    lead_in = _dcopy(lead)    # LEAD
+    follow_in = _dcopy(follow)  # FOLLOW
+    lead_in.lead_pairs = []    # LEAD 是跟随批，不挂 lead_pairs
+    follow_in.lead_pairs = [LeadPair("FOLLOW", "DISPENSE", "LEAD", "DISPENSE", "r0")]
+    lead_in.references = [LotConstraint(lot_name="LEAD", reference_lot="FOLLOW",
+                                        reference_step="DISPENSE", start_step="DISPENSE",
+                                        start_mod=None, lead_id="r0")]
+    le, ee, qa = run(flow, ct, qtimes, [lead_in, follow_in])
+    errs = validate_schedule(le, ee, qa, [lead_in, follow_in], flow, qtimes)
+    l_disp = next(e for e in le if e.lot_name == "LEAD" and e.step_name == "DISPENSE")
+    f_disp = next(e for e in le if e.lot_name == "FOLLOW" and e.step_name == "DISPENSE")
+    check("loader: 反转后排程 0 错误", len(errs) == 0, str(errs[:3]))
+    check("loader: 反转后闸A LEAD.DISPENSE.start >= FOLLOW.DISPENSE.end",
+          l_disp.start_time >= f_disp.end_time,
+          f"LEAD.start={l_disp.start_time} FOLLOW.end={f_disp.end_time}")
+
+
 def main():
     test_lead_invariant()
     test_lead_no_ring_warning()
     test_lead_back_shift()
     test_lead_health_check()
+    test_lead_loader_role_swap()
     print(f"\nSUMMARY: {PASS}/{PASS + FAIL} passed, {FAIL} failed")
     sys.exit(1 if FAIL else 0)
 

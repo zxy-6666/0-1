@@ -9,10 +9,11 @@
 
 ## 1. 需求还原
 
-用户绝大多数场景只需**几个关键 step**：lot1 做完 `step1`，lot2 的 `step2` **紧接着**做（尾随衔接），
-lot1 恒领先。难点在于：`step1` 前后常有**多个连续 Q-time**（如
-`UF-BAKE → UF-PLASMA → UF-DISPENSE → UF-CURE`），若 naive 地让 lot1 提前做完并"停在 step1 等"，
-就会停在**紧 Q 计时窗口内空等 → 超 Q**。因此 lead 必须把 lot1 上游链按 Q-time **回拉对齐**。
+用户绝大多数场景只需**几个关键 step**：lot2（领导批 / leading lot）先做完 `step2`，
+lot1（主点 / 跟随批）的 `step1` **紧接着**做（背靠背尾随），lot2 恒领先。
+难点在于：`step2` 前后常有**多个连续 Q-time**（如
+`UF-BAKE → UF-PLASMA → UF-DISPENSE → UF-CURE`），若 naive 地让 lot2 提前做完并"停在 step2 等"，
+就会停在**紧 Q 计时窗口内空等 → 超 Q**。因此 lead 必须把领导批 lot2 上游链按 Q-time **回拉对齐**。
 
 ---
 
@@ -46,13 +47,17 @@ lot1 | step1 | lot2 | step2 | mod
 
 | 声明列 | 现有字段 | 说明 |
 | ---- | ---- | ---- |
-| lot1 | `lot_name` | 领导批次（衔接点停车/回拉侧） |
+| lot1 | `lot_name` | **主点/跟随批**（用户主要关注的批次，背靠背尾随侧） |
 | step1 | `start_step` | lot1 的衔接 step |
-| lot2 | `reference_lot` | 配套批次 |
+| lot2 | `reference_lot` | **领导批次 / leading lot**（在前跑，衔接点回拉侧） |
 | step2 | `reference_step` | lot2 的对应衔接 step |
 | mod | `start_mod` | 关系修饰（见 3.1） |
 
 > 原 `hold_period_*` 列**删除**（确认无用）。
+>
+> **角色说明（重要）**：用户声明中 **lot2 是领导批（leading lot，在前面跑）**，lot1 是主点（跟随批，尾随）。
+> 内部实现（LeadPair）统一为"lot1=领导批、lot2=配套批"，加载时自动交换角色（见 §5.1），
+> 因此 §4 及以后的"内部实现"描述仍以"lot1=领导批"为准。
 
 ### 3.1 `mod` 含义（本页明确标注，web 端同步提示）
 
@@ -62,7 +67,7 @@ lot1 | step1 | lot2 | step2 | mod
 | N（如 0.5 / 2） | 普通引用 + 偏移 N 小时 |
 | shift | 普通引用，lot2.step2 完成后等到**下一班次**释放 |
 | shift_day | 普通引用，等到**下一白班**释放 |
-| lead | 领导衔接：lot2.step2 **尾随** lot1.step1（背靠背），并把 lot1 上游链按 Q-time 回拉对齐（§4） |
+| lead | 领导衔接：**lot2（领导批）在前跑**，lot1.step1 **背靠背尾随** lot2.step2，并把领导批上游链按 Q-time 回拉对齐（§4） |
 
 **示例（一行一个 lead）**：
 
@@ -71,11 +76,13 @@ lot1   step1                   lot2   step2                   mod
 real1  A005-R1-UF-DISPENSE     PC1    A005-R1-UF-DISPENSE     lead
 ```
 
+含义：`PC1`（lot2，领导批）先跑，做完 `A005-R1-UF-DISPENSE` 后 `real1`（lot1，主点）紧接着背靠背开始该步。
+
 ### 3.2 校验规则（数据体检）
 - lot1、lot2 存在；两者流程同构（step1 在 lot1 流程、step2 在 lot2 流程）。
 - `mod=lead`：系统自动按 lead 语义补全两条内部阻塞（§4.1），不需要额外行。
 - lead 之间、lead 与普通引用之间**不得成环**（DAG 检查，逐 lead DFS，含 Q 链内的隐式约束）。
-- lot1 当前已排在 step1 之后（热启动太靠后）：lead 对 lot1 侧已失效，结果标注（边界见 §8）。
+- lot2（领导批）当前已排在 step2 之后（热启动太靠后）：lead 对领导批侧已失效，结果标注（边界见 §8）。
 
 ---
 
@@ -83,9 +90,9 @@ real1  A005-R1-UF-DISPENSE     PC1    A005-R1-UF-DISPENSE     lead
 
 设 lead `(lot1, step1, lot2, step2, mod=lead)`，`step1-1` 为 lot1 紧邻 step1 的上一步。
 
-### 4.1 硬闸（保持配套不超前）
-- **闸 A**：`lot2.step2.start >= lot1.step1.end_track_out`（lot2 不得早于 lot1 完成 step1）。
-- 这一步是下界保证；但**不能只靠它**——它并不能拦住 lot1 自己提前做完后在 step1 等待超 Q。
+### 4.1 硬闸（保持跟随不超前）
+- **闸 A**：`lot1.step1.start >= lot2.step2.end_track_out`（lot1 不得早于 lot2 完成 step2）。
+- 这一步是下界保证；但**不能只靠它**——它并不能拦住 lot2 自己提前做完后在 step2 等待超 Q。
 
 ### 4.2 核心：尾随目标 + 上游回拉（back-shift alignment）
 lead 不做"在 step1 硬停"，而是**以 `lot2.step2.start` 为锚，把 lot1 上游整段链按 Q-time 回拉**，让

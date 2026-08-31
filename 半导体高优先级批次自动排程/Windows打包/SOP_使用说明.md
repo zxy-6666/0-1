@@ -390,14 +390,14 @@
 
 **lead 领导衔接（`start_mod=lead`）**
 
-在少数关键 step 上，让**领导批 lot1** 的 `step1` 做完后，**配套批 lot2** 的 `step2` **背靠背紧跟着做**（lot1 恒领先），且全程不超任何区间 Q-time、不在运行中的紧 Q 窗口内空等。同用五列声明：
+在少数关键 step 上，让 **lot2（领导批 / leading lot）在前面跑**、先完成其 `step2`，**lot1（主点 / 跟随批）背靠背紧跟**着开始其 `step1`（lot1 不超前），且全程不超任何区间 Q-time、不在运行中的紧 Q 窗口内空等。同用五列声明（lot1 为主点，lot2 为 leading）：
 
 | lot1 | step1 | lot2 | step2 | mod |
 | -------- | -------- | -------- | -------- | -------- |
 | real1 | A005-R1-UF-DISPENSE | PC1 | A005-D1-UF-DISPENSE | lead |
 
-含义：`PC1` 的 `A005-D1-UF-DISPENSE` **尾随** `real1` 的 `A005-R1-UF-DISPENSE`（`PC1` 不早于 `real1` 做完该步）。若 `real1` 的 `step1` 前后有多段连续 Q-time（如 UF-BAKE→PLASMA→DISPENSE→CURE），系统会以 `PC1` 该步开始时刻为锚，把 `real1` 上游链**按 Q 回拉对齐**——`real1` 不会提前做完停在 `DISPENSE` 前空等超 Q，而是整条链顺流与配套批相接。
-- 数据体检：`lot1`/`lot2` 必须在批次表存在、流程必须含对应衔接步、lead 与普通引用不得成环；`lot1` 热启动太靠后（已越过 step1）时对 lot1 侧回拉失效并标注。
+含义：`PC1`（lot2，领导批）先跑，做完 `A005-D1-UF-DISPENSE` 后，`real1`（lot1，主点）的 `A005-R1-UF-DISPENSE` **紧接着背靠背开始**（`real1` 不早于 `PC1` 完成该步）。若 `PC1` 的 `step2` 前后有多段连续 Q-time（如 UF-BAKE→PLASMA→DISPENSE→CURE），系统以 `real1` 该步开始时刻为锚，把 `PC1` 上游链**按 Q 回拉对齐**——`PC1` 不会提前做完停在 `DISPENSE` 前空等超 Q，而是整条链顺流与主点相接。
+- 数据体检：`lot1`/`lot2` 必须在批次表存在、流程必须含对应衔接步、lead 与普通引用不得成环；`lot2`（领导批）热启动太靠后（已越过 step2）时对 lot2 侧回拉失效并标注。
 
 ***
 
