@@ -238,10 +238,6 @@ def _effective_chain_wait(
     且在中间步骤 CT 吃紧时自动压紧（借鉴 scheduler_before1 的 MIN_CHAIN_WAIT 动态压缩）。
     """
     priority_wait = float(get_step_wait_time(lot.priority[0], lot.priority[1], priority_wait_map))
-    # lead 跟随批（lot.references 含带 lead_id 的闸A 内部边）：链内不空等，
-    # 让衔接步贴齐领导批完成时刻（lead 回拉的前提，避免低优先级 wait 把跟随批越拖越远）。
-    if any(getattr(r, "lead_id", "") for r in (lot.references or [])):
-        priority_wait = 0.0
     if not chain_info:
         return priority_wait
     budget = _chain_gap_budget(
@@ -3866,6 +3862,56 @@ def _lead_back_shift(
     return le, ee
 
 
+def _detect_qtime_cross_shift(
+    lot_entries: list,
+    qtimes: list,
+    shift_times: list,
+) -> list[str]:
+    """紧 Q 链跨班次告警：Q-time ≤ 紧链阈值 的相邻步骤若跨过班次切换时刻
+    （如 PLASMA 在班次 A 末完成、DISPENSE 排到班次 B 初），输出风险提示。
+
+    仅告警，不改变排程结果（跨班次约束机制待定义，见设计文档 §8）。
+    """
+    warns: list[str] = []
+    if not shift_times:
+        return warns
+    st_mins = sorted(s[0] * 60 + s[1] for s in shift_times)
+
+    def _crosses_shift(a: datetime, b: datetime) -> bool:
+        if b <= a:
+            return False
+        day = a.date()
+        cur = a
+        for _ in range(3):                       # 最多查 3 天
+            for m in st_mins:
+                t = datetime(day.year, day.month, day.day, m // 60, m % 60)
+                if t > cur:
+                    return t < b                 # 切换时刻落在 (a, b) 内 = 跨班次
+            day = day + timedelta(days=1)
+            cur = datetime(day.year, day.month, day.day, 0, 0)
+            if cur >= b:
+                return False
+        return False
+
+    by_lot: dict[str, list] = {}
+    for e in lot_entries:
+        by_lot.setdefault(e.lot_name, []).append(e)
+    for q in qtimes:
+        if q.max_duration is None or q.max_duration > TIGHT_CHAIN_THRESHOLD:
+            continue
+        for lot, es in by_lot.items():
+            se = next((e for e in es if e.step_name == q.start_step), None)
+            ee = next((e for e in es if e.step_name == q.end_step), None)
+            if se is None or ee is None:
+                continue
+            if _crosses_shift(se.end_time, ee.start_time):
+                warns.append(
+                    f"紧 Q 链跨班次: {lot} {q.start_step}→{q.end_step} "
+                    f"{se.end_time:%m/%d %H:%M} → {ee.start_time:%m/%d %H:%M} "
+                    f"(预算 {q.max_duration}min)")
+    return warns[:10]
+
+
 def schedule(
     lots: list[Lot],
     flows: list[FlowStep],
@@ -3983,6 +4029,15 @@ def schedule(
     _best_le, _best_ee = _lead_back_shift(
         lots=_orig_lots, lot_entries=_best_le, eqp_entries=_best_ee,
         flows=flows, window_end=_win + timedelta(days=2))
+    # ---- 紧 Q 链跨班次风险告警（仅提示，不改变结果）----
+    try:
+        _cs = _detect_qtime_cross_shift(_best_le, qtimes, shift_times)
+        for _w in _cs:
+            logger.warning("[跨班次风险] %s", _w)
+        if out_warnings is not None:
+            out_warnings.extend(_cs)
+    except Exception:
+        pass
     return _best_le, _best_ee, _best_qa
 
 
@@ -5055,6 +5110,13 @@ def _run_schedule_pass(
             state["done"] = True
         else:
             step_wait = _effective_chain_wait(lot, chain_info, priority_wait_map)
+            # lead 跟随批的衔接步：lot 已在等待领导批完成，满足条件即开始，不再额外等待
+            # （wait time 是 lot 内部相邻 step 的机制，衔接步本身除外——衔接由引用边驱动）
+            _nxt = state["remaining_steps"][state["step_index"]].step_name \
+                if state["step_index"] < len(state["remaining_steps"]) else None
+            if _nxt and any(getattr(r, "lead_id", "") and r.start_step == _nxt
+                            for r in (lot.references or [])):
+                step_wait = 0.0
             base_ready = end_time + timedelta(minutes=step_wait)
             state["_base_ready_time"] = base_ready
             state["ready_time"] = base_ready

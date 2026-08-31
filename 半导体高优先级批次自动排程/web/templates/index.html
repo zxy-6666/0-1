@@ -809,6 +809,28 @@ tableBody.addEventListener('click', e => {
   }
 });
 
+// 单元格输入即时同步到 rows（contenteditable / datalist / select）——
+// 防止任何重渲染（筛选/添加行/切表等）把尚未保存的输入内容冲掉
+tableBody.addEventListener('input', e => {
+  const td = e.target.closest('td');
+  const tr = e.target.closest('tr');
+  if (!td || !tr) return;
+  const origIdx = parseInt(tr.dataset.row);
+  if (isNaN(origIdx) || origIdx < 0 || origIdx >= rows.length) return;
+  const allTds = Array.from(tr.querySelectorAll('td:not(.col-seq)'));
+  const colIdx = allTds.indexOf(td);
+  if (colIdx < 0 || colIdx >= columns.length) return;
+  const sel = td.querySelector('select.cell-select');
+  const inp = td.querySelector('input.cell-input');
+  if (sel) {
+    rows[origIdx][columns[colIdx]] = sel.value;
+  } else if (inp) {
+    rows[origIdx][columns[colIdx]] = inp.value.trim();
+  } else {
+    rows[origIdx][columns[colIdx]] = (td.textContent || '').trim();
+  }
+});
+
 // Add row
 addRowBtn.addEventListener('click', () => {
   const newRow = {};
