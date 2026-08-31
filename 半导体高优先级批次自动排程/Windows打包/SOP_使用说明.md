@@ -95,11 +95,10 @@
 
 **示例（2 行）**：
 
-```
-lot_name	carrier_id	product_name	qty	priority	step_name	target_step	lot_state	running_time	start_time	planned_end
-PC1	PFME0307	A005-P1	1	1-1	A005-P1-FC-DUMMY			wait	0	2026/8/17 8:30	
-real1	PFME0408	A005-MA	2	3-1	A005-R1-AB1IQC-WFS			running	45	2026/8/17 8:30	2026/8/20 18:00
-```
+| lot_name | carrier_id | product_name | qty | priority | step_name | target_step | lot_state | running_time | start_time | planned_end |
+| ------- | --------- | ----------- | --- | -------- | --------- | ----------- | --------- | ------------ | ---------- | ----------- |
+| PC1 | PFME0307 | A005-P1 | 1 | 1-1 | A005-P1-FC-DUMMY | | wait | 0 | 2026/8/17 8:30 | |
+| real1 | PFME0408 | A005-MA | 2 | 3-1 | A005-R1-AB1IQC-WFS | | running | 45 | 2026/8/17 8:30 | 2026/8/20 18:00 |
 
 解读：
 
@@ -125,12 +124,11 @@ real1	PFME0408	A005-MA	2	3-1	A005-R1-AB1IQC-WFS			running	45	2026/8/17 8:30	2026
 
 **示例（3 行）**：
 
-```
-product_name	step_number	step_name	stage_name	eqp_id
-A005-MA	10.001	A005-R1-AB1IQC-WFS	AB1-IQC	
-A005-MA	20.001	A005-R1-FC-REFLOW	AB1-FC	PKCON001,PKCON002,PKCON003
-A005-MA	20.002	A005-R1-FC-DEFLUX	AB1-FC	PKFCV001
-```
+| product_name | step_number | step_name | stage_name | eqp_id |
+| ----------- | ----------- | --------- | ---------- | ------ |
+| A005-MA | 10.001 | A005-R1-AB1IQC-WFS | AB1-IQC | |
+| A005-MA | 20.001 | A005-R1-FC-REFLOW | AB1-FC | PKCON001,PKCON002,PKCON003 |
+| A005-MA | 20.002 | A005-R1-FC-DEFLUX | AB1-FC | PKFCV001 |
 
 解读：A005-MA 产品的第 10 步（IQC 检查）不限设备；回流焊 `FC-REFLOW` 可以在 PKCON001/002/003 三台中任意一台做；去 flux 只能上 PKFCV001。
 
@@ -154,11 +152,10 @@ A005-MA	20.002	A005-R1-FC-DEFLUX	AB1-FC	PKFCV001
 
 **示例（2 行）**：
 
-```
-product_name	step_number	step_name	qty	step_ct
-A005-MA	10.004	A005-R1-AB1IQC-INSP	3	3.6
-A005-MA	10.004	A005-R1-AB1IQC-INSP	8	7.8
-```
+| product_name | step_number | step_name | qty | step_ct |
+| ----------- | ----------- | --------- | --- | ------- |
+| A005-MA | 10.004 | A005-R1-AB1IQC-INSP | 3 | 3.6 |
+| A005-MA | 10.004 | A005-R1-AB1IQC-INSP | 8 | 7.8 |
 
 解读：`AB1IQC-INSP` 这一步，3 片要 3.6 分钟，8 片要 7.8 分钟。若 Lot 是 5 片而表里没有 5 片，系统会自动按相邻片数线性插值。
 
@@ -181,10 +178,9 @@ A005-MA	10.004	A005-R1-AB1IQC-INSP	8	7.8
 
 **示例（1 行）**：
 
-```
-product_name	Q-time_start	Q-time_end	Q-time_start_mod	Q-time_end_mod	Q-time
-A005-MA	A005-R1-UF-DISPENSE	A005-R1-UF-CURE	track out	track in	240
-```
+| product_name | Q-time_start | Q-time_end | Q-time_start_mod | Q-time_end_mod | Q-time |
+| ----------- | ------------ | ---------- | ---------------- | -------------- | ------ |
+| A005-MA | A005-R1-UF-DISPENSE | A005-R1-UF-CURE | track out | track in | 240 |
 
 解读：A005-MA 产品，从 `UF-DISPENSE` 这台机台**离开**（track out）到 `UF-CURE` 这台机台**上机**（track in）之间，最多只能隔 240 分钟（4 小时），否则违反工艺。
 
@@ -210,11 +206,10 @@ A005-MA	A005-R1-UF-DISPENSE	A005-R1-UF-CURE	track out	track in	240
 
 **示例（2 行）**：
 
-```
-ext_priority	int_priority	wait_time
-1	1	10
-3	5	32
-```
+| ext_priority | int_priority | wait_time |
+| ------------ | ------------ | --------- |
+| 1 | 1 | 10 |
+| 3 | 5 | 32 |
 
 解读：外部=1、内部=1（最优先）的批次，步骤间只等 10 分钟；外部=3、内部=5 的批次要等 32 分钟。
 
@@ -235,11 +230,10 @@ ext_priority	int_priority	wait_time
 
 **示例（2 行）**：
 
-```
-lot_name	step_name	special_ct	special_eqp
-CPU先导	A008-R1-DPS-MOUNT	45	
-DDR1	A009-R1-DPS-LG	120	
-```
+| lot_name | step_name | special_ct | special_eqp |
+| -------- | --------- | ---------- | ----------- |
+| CPU先导 | A008-R1-DPS-MOUNT | 45 | |
+| DDR1 | A009-R1-DPS-LG | 120 | |
 
 解读：批次 `CPU先导` 在 `A008-R1-DPS-MOUNT` 这步固定用 45 分钟（覆盖默认 CT）；批次 `DDR1` 在 `A009-R1-DPS-LG` 用 120 分钟。
 
@@ -264,11 +258,10 @@ DDR1	A009-R1-DPS-LG	120
 
 **示例（2 行）**：
 
-```
-eqp_name	max_lots	max_qty	together
-PKPOV001	4	8	true
-PKUFD005	3	6	false
-```
+| eqp_name | max_lots | max_qty | together |
+| -------- | -------- | ------- | -------- |
+| PKPOV001 | 4 | 8 | true |
+| PKUFD005 | 3 | 6 | false |
 
 解读：
 
@@ -296,11 +289,10 @@ PKUFD005	3	6	false
 
 **示例（2 行）**：
 
-```
-eqp_name	no_used_start_time	no_used_end_time	date	week
-PKCON001	22:00	0:00	-1	
-PKCON001	0:00	8:30	-1	
-```
+| eqp_name | no_used_start_time | no_used_end_time | date | week |
+| -------- | ------------------ | ---------------- | ---- | ---- |
+| PKCON001 | 22:00 | 0:00 | -1 | |
+| PKCON001 | 0:00 | 8:30 | -1 | |
 
 解读：`PKCON001` 每天（date=-1）晚上 22:00 到次日 0:00、以及 0:00 到早上 8:30 都不可用，即只在 8:30\~22:00 期间可排。
 
@@ -314,21 +306,19 @@ PKCON001	0:00	8:30	-1
 
 **shift\_config 示例（2 行）**：
 
-```
-shift_name	start_time
-白班	08:30
-夜班	20:30
-```
+| shift_name | start_time |
+| ---------- | ---------- |
+| 白班 | 08:30 |
+| 夜班 | 20:30 |
 
 解读：一天两个班：白班 8:30 开始、夜班 20:30 开始。
 
 **shift\_change\_time 示例（2 行）**：
 
-```
-start_time	end_time	day
-20:30	21:30	-1
-08:30	09:30	-1
-```
+| start_time | end_time | day |
+| ---------- | -------- | --- |
+| 20:30 | 21:30 | -1 |
+| 08:30 | 09:30 | -1 |
 
 解读：每天（-1）20:30~~21:30 和 8:30~~9:30 是交接班时段，此时段内不安排加工。
 
@@ -349,10 +339,9 @@ start_time	end_time	day
 
 **示例（1 行）**：
 
-```
-step_name	start_time	end_time	day	end_start_time	end_end_time	end_day
-A008-R1-FTF-INPUT-TO-OUTPUT	09:30	20:00	-1			
-```
+| step_name | start_time | end_time | day | end_start_time | end_end_time | end_day |
+| --------- | ---------- | -------- | --- | -------------- | ------------ | ------- |
+| A008-R1-FTF-INPUT-TO-OUTPUT | 09:30 | 20:00 | -1 | | | |
 
 解读：步骤 `A008-R1-FTF-INPUT-TO-OUTPUT` 每天只能在 09:30\~20:00 之间作业，其它时间不排。
 
@@ -366,10 +355,9 @@ A008-R1-FTF-INPUT-TO-OUTPUT	09:30	20:00	-1
 
 **示例（1 行）**：
 
-```
-product_name	input_number	output_number	change_step
-A008-MS	681	564	A008-R1-FTF-INPUT-TO-OUTPUT
-```
+| product_name | input_number | output_number | change_step |
+| ----------- | ------------ | ------------- | ----------- |
+| A008-MS | 681 | 564 | A008-R1-FTF-INPUT-TO-OUTPUT |
 
 解读：A008-MS 产品在 `FTF-INPUT-TO-OUTPUT` 这一步，转贴前 681 片、转贴后 564 片（因转贴 map 不同），系统按转贴后的 564 片排后续。
 
@@ -392,11 +380,10 @@ A008-MS	681	564	A008-R1-FTF-INPUT-TO-OUTPUT
 
 **示例（2 行）**：
 
-```
-lot_name	reference_lot	reference_step	start_mod	start_step	hold_period_1_start	hold_period_1_end
-real1	PC1	A005-P1-FC-REFLOW	0	A005-R1-FC-REFLOW		
-real1	PC1	A005-P1-UF-DISPENSE	0	A005-R1-UF-DISPENSE		
-```
+| lot_name | reference_lot | reference_step | start_mod | start_step | hold_period_1_start | hold_period_1_end |
+| -------- | ------------- | -------------- | --------- | ---------- | ------------------- | ----------------- |
+| real1 | PC1 | A005-P1-FC-REFLOW | 0 | A005-R1-FC-REFLOW | | |
+| real1 | PC1 | A005-P1-UF-DISPENSE | 0 | A005-R1-UF-DISPENSE | | |
 
 解读：批次 `real1` 的 `A005-R1-FC-REFLOW` 这一步，必须等参照批 `PC1` 的 `A005-P1-FC-REFLOW` 完成后才能开始（start\_mod=0，无偏移）；同理它的 `A005-R1-UF-DISPENSE` 要等 `PC1` 的 `A005-P1-UF-DISPENSE`。
 
@@ -417,11 +404,10 @@ real1	PC1	A005-P1-UF-DISPENSE	0	A005-R1-UF-DISPENSE
 
 **示例（2 行）**：
 
-```
-lot_name	step_name	delay_to	mode
-CPU先导	A008-R1-DPS-MOUNT	2026/8/25 14:00	delay
-DDR1		2026/8/25 09:00	pin
-```
+| lot_name | step_name | delay_to | mode |
+| -------- | --------- | -------- | ---- |
+| CPU先导 | A008-R1-DPS-MOUNT | 2026/8/25 14:00 | delay |
+| DDR1 | | 2026/8/25 09:00 | pin |
 
 解读：批次 `CPU先导` 的 `A008-R1-DPS-MOUNT` 不早于 8/25 14:00 开始（delay）；批次 `DDR1` 的所有未排步骤精确锁定在 8/25 09:00（pin）。
 
