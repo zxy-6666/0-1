@@ -319,6 +319,14 @@ def _qtime_margin_benefit(rel: float) -> float:
     return min(1.0, 0.2 + 0.8 * (rel - 1.0))
 
 
+# ── 统一余量计量（分钟，直接并入得分，与加权完工时间同一单位） ──
+# 以用户安全余量 safe = max(预算×安全余量%, 安全余量下限) 为分界：
+#   - margin ≥ safe（达标区）：微小奖励（减分，渐近饱和）——"得分很少"；
+#   - margin < safe（缺口区）：重罚，越接近 0 罚分越大，逼近一次超Q违规的量级。
+_MARGIN_REWARD_CAP = 20.0    # 达标区单链奖励上限（分钟）
+_ZERO_MARGIN_PENALTY = 1e6   # 余量=0 时单链罚分基数（分钟）：≈ 超Q违规（_PENALTY_PER_ERR）的量级
+
+
 def compute_objective(
     lot_entries: list[ScheduleEntry],
     lots: list[Lot],
@@ -339,11 +347,13 @@ def compute_objective(
       - qtime_margins: 每条 Q-time 规则的剩余余量（分钟）；无 Q-time 时为空 dict
       - min_qtime_margin: 全部 Q-time 规则中的最小余量（分钟），无 Q-time 时为 None
       - min_qtime_margin_ratio: 最小余量 / 该规则预算（窗口占比，用于展示）
-      - min_qtime_margin_benefit: 非线性收益（越小余量收益越低，用于同分次目标）
-      - qtime_margin_shortfall: 安全余量缺口（分钟）= max(0, safe - margin) 的最大值
-      - qtime_margin_penalty: 梯度罚分（分钟）= gradient × (shortfall + shortfall²/(2×safe))，
-          缺口越深单分钟罚分越高；优化器把它加进得分，引导搜索把每条链余量抬到安全余量之上
-      - score: 主目标加权总完工时间（分钟）
+      - min_qtime_margin_benefit: 非线性收益（同分次目标，越大越好）
+      - qtime_margin_term: 统一余量项（分钟，正=罚分、负=奖励），直接并入 score。
+          达标区（margin ≥ safe）微小奖励（≤ _MARGIN_REWARD_CAP，渐近饱和）；
+          缺口区（margin < safe）重罚 = gradient × _ZERO_MARGIN_PENALTY × (1-rel)³，
+          margin→0 时逼近超Q违规量级，引导搜索远离"余量濒危"的解。
+      - qtime_margin_violations: 余量低于安全余量的链明细（供前端告警展示）
+      - score: 加权总完工时间（分钟，不含余量项）
     """
     completion: dict[str, datetime] = {}
     for e in lot_entries:
@@ -371,29 +381,24 @@ def compute_objective(
         dur_min = (end - schedule_start).total_seconds() / 60.0
         weighted_total += weights.get(lot_name, 1.0) * dur_min
 
-    # 次目标：Q-time 剩余余量（越大越好）
+    # 统一余量项：Q-time 剩余余量并入得分（达标区微奖励 / 缺口区重罚）
     qtime_margins = {}
     min_qtime_margin = None
     min_qtime_margin_ratio = None
     min_qtime_margin_benefit = None
-    qtime_margin_shortfall = 0.0
-    qtime_margin_penalty = 0.0
+    qtime_margin_term = 0.0
     _violations: list[str] = []
     if qtimes:
         qtime_margins = _qtime_margins_from_entries(lot_entries, lots, qtimes)
         if qtime_margins:
             min_qtime_margin = min(qtime_margins.values())
             # 归一化余量：margin / budget（比率）。不同长度 Q 段可比，
-            # 紧段（240min）与宽松段（1440min）统一在同一尺度上，
-            # 作为搜索次目标更合理（避免绝对分钟天然偏袒长段）。
+            # 紧段（240min）与宽松段（1440min）统一在同一尺度上。
             _prod_of = {l.lot_name: l.product_name for l in lots}
             _ratios = []
             # 收益参考点 = 用户安全余量：safe = max(预算 × %, 下限)。
-            # rel = margin / safe，在安全余量点收益恰为 0.2，低于则平方衰减。
+            # rel = margin / safe：rel=1 为分界（达标 / 缺口）。
             _rels = []
-            # 安全余量缺口（分钟）及其所在链的 safe：用于梯度罚分（越深单分钟罚分越高）。
-            _shortfall_max = 0.0
-            _safe_at_max = 0.0
             for (ln, qs, qe), m in qtime_margins.items():
                 for q in qtimes:
                     if (q.product_name == _prod_of.get(ln)
@@ -402,25 +407,22 @@ def compute_objective(
                         _ratios.append(m / float(q.max_duration))
                         safe = max(q.max_duration * qtime_safety_margin_pct / 100.0,
                                    qtime_min_margin_min)
-                        _rels.append(m / safe if safe > 0 else 1.0)
-                        if m < safe:
+                        rel = m / safe if safe > 0 else 1.0
+                        _rels.append(rel)
+                        if rel >= 1:
+                            # 达标区：微小奖励（减分），渐近饱和于 _MARGIN_REWARD_CAP
+                            qtime_margin_term -= _MARGIN_REWARD_CAP * (1.0 - 1.0 / rel)
+                        else:
+                            # 缺口区：重罚（立方放大），margin→0 逼近超Q违规量级
+                            qtime_margin_term += qtime_shortfall_gradient * _ZERO_MARGIN_PENALTY * (
+                                (1.0 - rel) ** 3)
                             _violations.append(
                                 f"{ln} {qs}→{qe} 余量{m:.0f}min<安全{safe:.0f}min")
-                            if (safe - m) > _shortfall_max:
-                                _shortfall_max = safe - m
-                                _safe_at_max = safe
                         break
             if _rels:
                 min_qtime_margin_ratio = min(_ratios)
                 # 非线性收益：低于安全余量断崖下降，达到安全余量 0.2，往上渐近饱和
                 min_qtime_margin_benefit = min(_qtime_margin_benefit(r) for r in _rels)
-                qtime_margin_shortfall = _shortfall_max
-                # 梯度罚分：缺 1 分钟按 gradient 分起步，越接近耗尽单分钟罚分越高
-                # （单分钟罚分 = gradient × (1 + 缺口/safe)，0 余量时为 2×gradient）。
-                if _shortfall_max > 0 and _safe_at_max > 0:
-                    qtime_margin_penalty = qtime_shortfall_gradient * (
-                        _shortfall_max
-                        + _shortfall_max * _shortfall_max / (2.0 * _safe_at_max))
 
     score = weighted_total
 
@@ -434,8 +436,6 @@ def compute_objective(
         "min_qtime_margin": min_qtime_margin,
         "min_qtime_margin_ratio": min_qtime_margin_ratio,
         "min_qtime_margin_benefit": min_qtime_margin_benefit,
-        "qtime_margin_shortfall": qtime_margin_shortfall,
-        "qtime_margin_penalty": qtime_margin_penalty,
-        "qtime_margin_ok": qtime_margin_shortfall == 0,
+        "qtime_margin_term": qtime_margin_term,
         "qtime_margin_violations": _violations,
     }
