@@ -2557,6 +2557,7 @@ def _try_schedule_chain_forward(
                             eqp_id, lot, step, ct, ready_time, special_eqp_map[eqp_id],
                             lot_state, special_lot_step_lookup, ct_lookup,
                             eqp_batch_state, priority_wait_map,
+                            wait_window=BATCH_WAIT_WINDOW,
                             cur_time=cur_time, machine_intervals=machine_intervals, special_eqp_map=special_eqp_map,
                             lot_entries=lot_entries)
                         if not can_use:
@@ -2875,6 +2876,7 @@ def _try_schedule_chain_forward(
                         eqp_id, lot, step, ct, ready_time, special_eqp_map[eqp_id],
                         lot_state, special_lot_step_lookup, ct_lookup,
                         eqp_batch_state, priority_wait_map,
+                        wait_window=BATCH_WAIT_WINDOW,
                         cur_time=cur_time, machine_intervals=machine_intervals, special_eqp_map=special_eqp_map,
                         lot_entries=lot_entries)
                     if not can_use:
@@ -4300,6 +4302,7 @@ def schedule(
     qtight_min_margin: Optional[float] = None,
     chain_wait_safety: Optional[int] = None,
     cross_shift_avoid: Optional[bool] = None,
+    batch_wait_window: Optional[int] = None,
     out_warnings: Optional[list] = None,
 ) -> tuple[list[ScheduleEntry], list[EqpScheduleEntry], list[QTimeAlert]]:
     """两遍排程（Fix3）：把"第一遍实际释放时刻"回喂第二遍作为预测锚点。
@@ -4342,6 +4345,7 @@ def schedule(
         qtight_min_margin=qtight_min_margin,
         chain_wait_safety=chain_wait_safety,
         cross_shift_avoid=cross_shift_avoid,
+        batch_wait_window=batch_wait_window,
         out_warnings=None)
     _forecast = _collect_ref_release_forecast(_le1, lots, shift_times)
     if ref_release_forecast:
@@ -4367,6 +4371,7 @@ def schedule(
         qtight_min_margin=qtight_min_margin,
         chain_wait_safety=chain_wait_safety,
         cross_shift_avoid=cross_shift_avoid,
+        batch_wait_window=batch_wait_window,
         out_warnings=out_warnings)
     # 两遍都比，取更优者。择优键为四元组，优先级从高到低：
     #   1) 缺失步骤数（最硬性：丢步骤的排程非法；且丢步会让 Q-time 告警变少，
@@ -4401,6 +4406,14 @@ def schedule(
         lots=_orig_lots, lot_entries=_best_le, eqp_entries=_best_ee,
         flows=flows, window_end=_win + timedelta(days=2),
         eqp_constraints=eqp_constraints)
+    # ---- 超 Q 后修复（尽力而为）：长 Q 链首被排得过早、端步骤被延后导致超 Q 时，
+    #      把链首后移到满足 Q 预算的位置（如 BAKE→DISPENSE 1445min>1440min 场景）。
+    #      只后移不前置；设备冲突 / 上游 Q 被撑爆 / 校验违规增加时整体回滚。
+    try:
+        _fix_qtime_overflow_pull_chain_start(
+            _best_le, _best_ee, _best_qa, _orig_lots, flows, qtimes, shift_times)
+    except Exception:
+        pass
     # ---- 紧 Q 链跨班次风险告警（仅提示，不改变结果）----
     try:
         _cs = _detect_qtime_cross_shift(_best_le, qtimes, shift_times)
@@ -4412,6 +4425,142 @@ def schedule(
     except Exception:
         pass
     return _best_le, _best_ee, _best_qa
+
+
+def _prev_step_name(flows: list, product_name: str, step_name: str) -> Optional[str]:
+    """返回某产品流程中指定步骤的前一个步骤名（按 step_number 升序）；无则 None。"""
+    steps = [f for f in flows if f.product_name == product_name]
+    def _key(f):
+        try:
+            return (float(f.step_number), f.step_name)
+        except (TypeError, ValueError):
+            return (0.0, f.step_name)
+    steps.sort(key=_key)
+    for i, f in enumerate(steps):
+        if f.step_name == step_name and i > 0:
+            return steps[i - 1].step_name
+    return None
+
+
+def _fix_qtime_overflow_pull_chain_start(le, ee, qa, lots, flows, qtimes,
+                                         shift_times=None) -> int:
+    """超 Q 后修复（尽力而为，第 15 轮新增）。
+
+    场景：长 Q-time 段的链首步骤（如 real1 的 BAKE）被自然排得很早，端步骤
+    （如 DISPENSE）随后被手动延后 / 设备挤兑推晚，导致整段间隔超过 Q 预算
+    （如 BAKE→DISPENSE 1445min > 1440min）。此时链首之后通常有大段空缺，
+    把链首步骤后移即可恢复合规。
+
+    策略（只后移、不前置，失败即放弃保持原样）：
+      1) 对每个"超时" Q-time 告警，定位链首 entry A 与端步骤 entry B；
+      2) 目标：A 的参考时刻（track out 用 end / track in 用 start）≤ B 参考 - 预算；
+      3) 用设备占用区间找 ≥ (A.start + 需后移量) 的最早可用槽，且新参考时刻不越过上限；
+      4) 校验上一步约束（后移不得早于上一步完成）与上游 Q（A 作为 end 步骤的链不得被撑爆）；
+      5) 通过则同步更新 lot 维度与设备维度 entry，并把该告警标记为 OK；
+      6) 全部尝试后统一用 validate_schedule 复查：若违规数比修复前增加则整体回滚。
+    """
+    if not qa or not qtimes:
+        return 0
+    try:
+        from validation import validate_schedule
+    except Exception:
+        validate_schedule = None
+
+    prod_map = {l.lot_name: l.product_name for l in lots}
+    entry_by_lot_step: dict[str, dict[str, ScheduleEntry]] = {}
+    for e in le:
+        entry_by_lot_step.setdefault(e.lot_name, {})[e.step_name] = e
+    qrule_by_key: dict[tuple, object] = {}
+    for q in qtimes:
+        qrule_by_key[(q.product_name, q.start_step, q.end_step)] = q
+
+    before_n = len(validate_schedule(le, ee, qa, lots, flows, qtimes)) if validate_schedule else 0
+    moves = []  # 记录已移动条目，供整体回滚
+
+    for alert in list(qa):
+        try:
+            if alert.status != "超时" or "→" not in alert.qtime_rule:
+                continue
+            ss, es = (x.strip() for x in alert.qtime_rule.split("→", 1))
+            prod = prod_map.get(alert.lot_name)
+            q = qrule_by_key.get((prod, ss, es))
+            if q is None or not q.max_duration:
+                continue
+            A = entry_by_lot_step.get(alert.lot_name, {}).get(ss)
+            B = entry_by_lot_step.get(alert.lot_name, {}).get(es)
+            if A is None or B is None or A.eqp_id == "-":
+                continue
+            budget = float(q.max_duration)
+            end_mod = (q.end_mod or "track out").strip()
+            # 端步骤参考时刻（track in=开始 / track out=结束）
+            b_ref = B.start_time if end_mod == "track in" else B.end_time
+            # 链首参考时刻的合规下限：间隔 = b_ref - a_ref，要求 ≤ 预算
+            # → a_ref ≥ b_ref - 预算。a_ref 越小（链首排得越早）间隔越大越易超时。
+            a_ref_min = b_ref - timedelta(minutes=budget)
+            a_ref_now = A.end_time if end_mod == "track out" else A.start_time
+            if a_ref_now >= a_ref_min:
+                continue  # 链首已够晚，间隔合规
+            # 需后移分钟数（+1min 避免浮点误差刚好卡线）
+            shift_min = (a_ref_min - a_ref_now).total_seconds() / 60.0 + 1.0
+            lo = A.start_time + timedelta(minutes=shift_min)
+            # 上一步约束：后移不得早于上一步完成
+            prev_step = _prev_step_name(flows, prod, ss)
+            prev_e = entry_by_lot_step.get(alert.lot_name, {}).get(prev_step) if prev_step else None
+            if prev_e is not None and lo < prev_e.end_time:
+                lo = prev_e.end_time
+            # 设备占用区间（剔除 A 自身；含"down"标记不影响：占用均视为普通占用）
+            occ = [[e2.start_time, e2.end_time] for e2 in ee
+                   if e2.eqp_id == A.eqp_id
+                   and not (e2.lot_name == A.lot_name and e2.step_name == A.step_name)]
+            new_start = _find_earliest_slot(occ, lo, timedelta(minutes=A.ct))
+            # 保序：链首后移不得越过端步骤（A 排得越晚间隔越短，方向天然合规）
+            if end_mod == "track out":
+                if new_start >= B.start_time - timedelta(minutes=A.ct):
+                    continue
+            else:
+                if new_start >= B.start_time:
+                    continue
+            # 上游 Q 检查：A 作为 end 步骤（规则 prev_step→ss），移动不得撑爆上游预算
+            if prev_e is not None and prev_step:
+                upq = qrule_by_key.get((prod, prev_step, ss))
+                if upq is not None and upq.max_duration:
+                    up_end_mod = (upq.end_mod or "track out").strip()
+                    up_ref = new_start + timedelta(minutes=A.ct) if up_end_mod == "track out" else new_start
+                    if (up_ref - prev_e.end_time).total_seconds() / 60.0 > float(upq.max_duration):
+                        continue
+            # 应用移动
+            old_start, old_end = A.start_time, A.end_time
+            A.start_time = new_start
+            A.end_time = new_start + timedelta(minutes=A.ct)
+            eqp_match = None
+            for e2 in ee:
+                if (e2.eqp_id == A.eqp_id and e2.lot_name == A.lot_name
+                        and e2.step_name == A.step_name and e2.start_time == old_start):
+                    eqp_match = e2
+                    break
+            if eqp_match is not None:
+                eqp_match.start_time = new_start
+                eqp_match.end_time = A.end_time
+            moves.append((A, old_start, old_end, eqp_match))
+            alert.status = "OK"
+            alert.over_minutes = 0
+        except Exception:
+            continue
+
+    if not moves:
+        return 0
+    # 整体回滚保护：修复后违规数不得比修复前增加
+    if validate_schedule:
+        after_n = len(validate_schedule(le, ee, qa, lots, flows, qtimes))
+        if after_n > before_n:
+            for A, old_start, old_end, eqp_match in moves:
+                A.start_time = old_start
+                A.end_time = old_end
+                if eqp_match is not None:
+                    eqp_match.start_time = old_start
+                    eqp_match.end_time = old_end
+            return 0
+    return len(moves)
 
 
 def _run_schedule_pass(
@@ -4439,6 +4588,7 @@ def _run_schedule_pass(
     qtight_min_margin: Optional[float] = None,
     chain_wait_safety: Optional[int] = None,
     cross_shift_avoid: Optional[bool] = None,
+    batch_wait_window: Optional[int] = None,
     out_warnings: Optional[list] = None,
 ) -> tuple[list[ScheduleEntry], list[EqpScheduleEntry], list[QTimeAlert]]:
     """执行启发式排程。
@@ -4474,7 +4624,7 @@ def _run_schedule_pass(
     if special_lot_step_lookup is None:
         special_lot_step_lookup = {}
 
-    global TIGHT_CHAIN_THRESHOLD, QTIGHT_SAFETY_MARGIN, QTIGHT_MIN_MARGIN, CHAIN_WAIT_SAFETY, CROSS_SHIFT_AVOID
+    global TIGHT_CHAIN_THRESHOLD, QTIGHT_SAFETY_MARGIN, QTIGHT_MIN_MARGIN, CHAIN_WAIT_SAFETY, CROSS_SHIFT_AVOID, BATCH_WAIT_WINDOW
     # 每次调用都写入"生效值"（参数为 None 时恢复模块默认），
     # 避免上一次调用残留的自定义值污染后续以默认参数运行的调用
     # （同进程多请求 / 测试先后调用场景）。
@@ -4485,6 +4635,8 @@ def _run_schedule_pass(
     QTIGHT_MIN_MARGIN = qtight_min_margin if qtight_min_margin is not None else 30.0
     CHAIN_WAIT_SAFETY = chain_wait_safety if chain_wait_safety is not None else 20
     CROSS_SHIFT_AVOID = cross_shift_avoid if cross_shift_avoid is not None else True
+    # 恒组批等待凑批窗口（分钟，默认 240）
+    BATCH_WAIT_WINDOW = batch_wait_window if batch_wait_window is not None else 240
 
     now = datetime.now()
 
@@ -5300,6 +5452,7 @@ def _run_schedule_pass(
                         eqp_id, lot, step, ct, ready, special_eqp_map[eqp_id],
                         lot_state, special_lot_step_lookup, ct_lookup,
                         eqp_batch_state, priority_wait_map,
+                        wait_window=BATCH_WAIT_WINDOW,
                         cur_time=current_time, machine_intervals=machine_intervals, special_eqp_map=special_eqp_map,
                         lot_entries=lot_entries)
                     if not can_use:

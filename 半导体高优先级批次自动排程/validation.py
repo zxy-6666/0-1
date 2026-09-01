@@ -300,6 +300,21 @@ def _qtime_margins_from_entries(
     return margins
 
 
+def _qtime_margin_benefit(ratio: float) -> float:
+    """Q-time 余量收益（非线性，越大越好，返回 [0,1]）。
+
+    用户规则：剩余余量作为目标不能完全线性——余量充足时（≥40%）几乎同等，
+    但越接近耗尽差异越明显（40% > 30% > 20%，且差距递增），
+    引导搜索优先保住"快要耗尽"的 Q 段，而不是为把 60% 推到 90% 牺牲完工时间。
+      - ratio ≥ 0.4（饱和区）：0.96~1.0 仅保留微小坡度（几乎同等）；
+      - ratio < 0.4（稀缺区）：缺口占比的平方放大（余量减半，收益损失 4 倍）。
+    """
+    if ratio >= 0.4:
+        return 0.96 + 0.04 * (ratio - 0.4) / 0.6
+    d = (0.4 - ratio) / 0.4
+    return 0.96 * (1.0 - d * d)
+
+
 def compute_objective(
     lot_entries: list[ScheduleEntry],
     lots: list[Lot],
@@ -348,6 +363,7 @@ def compute_objective(
     qtime_margins = {}
     min_qtime_margin = None
     min_qtime_margin_ratio = None
+    min_qtime_margin_benefit = None
     if qtimes:
         qtime_margins = _qtime_margins_from_entries(lot_entries, lots, qtimes)
         if qtime_margins:
@@ -366,6 +382,8 @@ def compute_objective(
                         break
             if _ratios:
                 min_qtime_margin_ratio = min(_ratios)
+                # 非线性收益：余量充足时几乎同等，越接近耗尽差异越明显
+                min_qtime_margin_benefit = _qtime_margin_benefit(min_qtime_margin_ratio)
 
     score = weighted_total
 
@@ -378,4 +396,5 @@ def compute_objective(
         "qtime_margins": qtime_margins,
         "min_qtime_margin": min_qtime_margin,
         "min_qtime_margin_ratio": min_qtime_margin_ratio,
+        "min_qtime_margin_benefit": min_qtime_margin_benefit,
     }

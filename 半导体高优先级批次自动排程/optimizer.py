@@ -143,6 +143,7 @@ def schedule_optimized(
     qtight_min_margin: float = None,      # 紧 Q-time 安全余量下限（分钟，默认 30）
     chain_wait_safety: int = None,
     cross_shift_avoid: bool = None,
+    batch_wait_window: int = None,        # 恒组批等待凑批窗口（分钟，默认 240）
     # ---- SA+Tabu 细调层（借鉴 meta_heuristic_before） ----
     refine_enabled: bool = True,
     refine_max_iterations: int = 60,
@@ -215,6 +216,7 @@ def schedule_optimized(
                 qtight_min_margin=qtight_min_margin,
                 chain_wait_safety=chain_wait_safety,
                 cross_shift_avoid=cross_shift_avoid,
+                batch_wait_window=batch_wait_window,
                 out_warnings=iter_warnings,
             )
         except Exception as e:
@@ -233,14 +235,17 @@ def schedule_optimized(
                                     qtimes=qtimes)
             penal = obj["score"]           # 合法解：罚分 = 真实 score
             is_valid = True
-            # 次目标改用"归一化余量比率"：不同长度 Q 段在同一尺度上可比
-            margin = obj.get("min_qtime_margin_ratio")
+            # 次目标改用"归一化余量比率"的非线性收益：余量充足时几乎同等，
+            # 越接近耗尽差异越明显（用户规则），引导搜索优先保住濒危 Q 段。
+            margin = obj.get("min_qtime_margin_benefit")
+            margin_ratio = obj.get("min_qtime_margin_ratio")
             err_list = []
         else:
             # 非法解：软约束罚分（BASE 保证劣于一切合法解；错误数/超时量越小越优）
             penal = _penal_score(errors)
             is_valid = False
             margin = None
+            margin_ratio = None
             obj = None
             err_list = list(errors)
 
@@ -270,7 +275,7 @@ def schedule_optimized(
                 "chain_placement": chain_placement,
                 "score": obj["score"] if obj else None,
                 "min_qtime_margin": (obj or {}).get("min_qtime_margin"),
-                "min_qtime_margin_ratio": margin,
+                "min_qtime_margin_ratio": margin_ratio,
                 "completion_times": (obj or {}).get("completion_times"),
                 "errors": err_list,
                 "schedule_warnings": list(iter_warnings),
@@ -311,7 +316,8 @@ def schedule_optimized(
                     qtight_safety_margin=qtight_safety_margin,
                     qtight_min_margin=qtight_min_margin,
                     chain_wait_safety=chain_wait_safety,
-                    cross_shift_avoid=cross_shift_avoid)
+                    cross_shift_avoid=cross_shift_avoid,
+                    batch_wait_window=batch_wait_window)
             except Exception:
                 return None
             errs = validate_schedule(
@@ -419,7 +425,7 @@ def schedule_optimized(
                 continue
             _errs, _obj, _nle, _nee, _nqa = res
             nb_score = _obj["score"]
-            nb_margin = _obj.get("min_qtime_margin_ratio")
+            nb_margin = _obj.get("min_qtime_margin_benefit")  # 非线性收益（越大越好）
             # delta 与"当前解"比较（SA 退火基准）：当前解漂移后仍能正常比较，
             # 避免旧版"与历史最优比"导致的温控失真/搜索瘫痪。
             delta = nb_score - cur_obj_score
@@ -459,7 +465,7 @@ def schedule_optimized(
                                      "eqp_prefs": nb_ep, "chain_placement": nb_ch,
                                      "score": nb_score,
                                      "min_qtime_margin": _obj.get("min_qtime_margin"),
-                                     "min_qtime_margin_ratio": nb_margin,
+                                     "min_qtime_margin_ratio": _obj.get("min_qtime_margin_ratio"),
                                      "completion_times": _obj.get("completion_times"),
                                      "errors": list(_errs),
                                      "schedule_warnings": list(iter_warnings)}

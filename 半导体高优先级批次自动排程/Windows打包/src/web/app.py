@@ -300,6 +300,7 @@ def _run_schedule(seed: int, req_body: dict, export_excel: bool = True):
         cross_shift_avoid = _cfg.get("cross_shift_avoid")
         if cross_shift_avoid is None:
             cross_shift_avoid = True
+        batch_wait_window = _cfg.get("batch_wait_window")
 
         # ---- SA+Tabu 细调参数（由配置读取，前端可覆盖） ----
         refine_enabled = bool(req_body.get("refine_enabled", _cfg.get("refine_enabled", True)))
@@ -332,6 +333,7 @@ def _run_schedule(seed: int, req_body: dict, export_excel: bool = True):
             qtight_min_margin=qtight_min_margin,
             chain_wait_safety=chain_wait_safety,
             cross_shift_avoid=cross_shift_avoid,
+            batch_wait_window=batch_wait_window,
             refine_enabled=refine_enabled,
             refine_max_iterations=refine_max_iterations,
             tabu_tenure=tabu_tenure,

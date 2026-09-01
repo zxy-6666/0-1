@@ -15,6 +15,8 @@ from models import Lot, QTimeConstraint, ScheduleEntry, EqpScheduleEntry, QTimeA
 
 
 def _next_shift_after(dt: datetime, shift_times: list[tuple[int, int]]) -> datetime:
+    if not shift_times:
+        return dt
     for h, m in shift_times:
         candidate = dt.replace(hour=h, minute=m, second=0, microsecond=0)
         if candidate > dt:
@@ -23,6 +25,8 @@ def _next_shift_after(dt: datetime, shift_times: list[tuple[int, int]]) -> datet
 
 
 def _next_morning_shift(dt: datetime, shift_times: list[tuple[int, int]]) -> datetime:
+    if not shift_times:
+        return dt
     h, m = shift_times[0]
     candidate = dt.replace(hour=h, minute=m, second=0, microsecond=0)
     if candidate > dt:
@@ -296,6 +300,21 @@ def _qtime_margins_from_entries(
     return margins
 
 
+def _qtime_margin_benefit(ratio: float) -> float:
+    """Q-time 余量收益（非线性，越大越好，返回 [0,1]）。
+
+    用户规则：剩余余量作为目标不能完全线性——余量充足时（≥40%）几乎同等，
+    但越接近耗尽差异越明显（40% > 30% > 20%，且差距递增），
+    引导搜索优先保住"快要耗尽"的 Q 段，而不是为把 60% 推到 90% 牺牲完工时间。
+      - ratio ≥ 0.4（饱和区）：0.96~1.0 仅保留微小坡度（几乎同等）；
+      - ratio < 0.4（稀缺区）：缺口占比的平方放大（余量减半，收益损失 4 倍）。
+    """
+    if ratio >= 0.4:
+        return 0.96 + 0.04 * (ratio - 0.4) / 0.6
+    d = (0.4 - ratio) / 0.4
+    return 0.96 * (1.0 - d * d)
+
+
 def compute_objective(
     lot_entries: list[ScheduleEntry],
     lots: list[Lot],
@@ -323,11 +342,15 @@ def compute_objective(
     max_ext = 1
     for lot in lots:
         max_ext = max(max_ext, lot.priority[0])
+    # 优先级跨度（防 0 除；span 即 ext 从 1 到 max_ext 的档位数）
+    span = max(1, max_ext - 1)
     weights: dict[str, float] = {}
     for lot in lots:
         ext = lot.priority[0]
         if weight_by_priority:
-            weights[lot.lot_name] = 1.0 + (max_ext - ext)  # 高优先级权重更大
+            # 权重差 ≤10%：ext=1（最高优先）权重 1.10，ext=max_ext 权重 1.00，
+            # 在 [1, max_ext] 间线性递减，任意两个优先级权重差 ≤10%。
+            weights[lot.lot_name] = 1.0 + 0.1 * (max_ext - ext) / span
         else:
             weights[lot.lot_name] = 1.0
 
@@ -339,10 +362,28 @@ def compute_objective(
     # 次目标：Q-time 剩余余量（越大越好）
     qtime_margins = {}
     min_qtime_margin = None
+    min_qtime_margin_ratio = None
+    min_qtime_margin_benefit = None
     if qtimes:
         qtime_margins = _qtime_margins_from_entries(lot_entries, lots, qtimes)
         if qtime_margins:
             min_qtime_margin = min(qtime_margins.values())
+            # 归一化余量：margin / budget（比率）。不同长度 Q 段可比，
+            # 紧段（240min）与宽松段（1440min）统一在同一尺度上，
+            # 作为搜索次目标更合理（避免绝对分钟天然偏袒长段）。
+            _prod_of = {l.lot_name: l.product_name for l in lots}
+            _ratios = []
+            for (ln, qs, qe), m in qtime_margins.items():
+                for q in qtimes:
+                    if (q.product_name == _prod_of.get(ln)
+                            and q.start_step == qs and q.end_step == qe
+                            and q.max_duration and q.max_duration > 0):
+                        _ratios.append(m / float(q.max_duration))
+                        break
+            if _ratios:
+                min_qtime_margin_ratio = min(_ratios)
+                # 非线性收益：余量充足时几乎同等，越接近耗尽差异越明显
+                min_qtime_margin_benefit = _qtime_margin_benefit(min_qtime_margin_ratio)
 
     score = weighted_total
 
@@ -354,4 +395,6 @@ def compute_objective(
         "schedule_start": schedule_start,
         "qtime_margins": qtime_margins,
         "min_qtime_margin": min_qtime_margin,
+        "min_qtime_margin_ratio": min_qtime_margin_ratio,
+        "min_qtime_margin_benefit": min_qtime_margin_benefit,
     }

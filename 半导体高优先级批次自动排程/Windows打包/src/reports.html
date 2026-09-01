@@ -1,0 +1,1456 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class=""><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>排程可视化报表</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #333; }
+.container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.header h1 { font-size: 22px; color: #1a1a2e; }
+.header .nav-links { display: flex; gap: 12px; }
+.header .nav-links a { text-decoration: none; padding: 8px 16px; border-radius: 6px; font-size: 14px; background: #fff; color: #333; border: 1px solid #d9d9d9; transition: all 0.2s; }
+.header .nav-links a:hover { border-color: #4096ff; color: #4096ff; }
+.header .nav-links a.active { background: #4096ff; color: #fff; border-color: #4096ff; }
+.nav-btn { padding: 8px 16px; border-radius: 6px; font-size: 14px; cursor: pointer; background: #fff; color: #722ed1; border: 1px solid #d3adf7; transition: all 0.2s; }
+.nav-btn:hover { background: #f9f0ff; border-color: #722ed1; }
+.nav-btn.shutdown { color: #ff4d4f; border-color: #ffa39e; }
+.nav-btn.shutdown:hover { background: #fff1f0; border-color: #ff4d4f; }
+
+.card { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 20px; margin-bottom: 20px; }
+.card h2 { font-size: 16px; margin-bottom: 16px; color: #1a1a2e; border-bottom: 2px solid #4096ff; padding-bottom: 8px; }
+.card h3 { font-size: 14px; margin: 16px 0 10px 0; color: #555; }
+.card h3:first-of-type { margin-top: 0; }
+.table-wrap { overflow-x: auto; overflow-y: scroll; max-height: 60vh; border: 1px solid #c0c0c0; border-radius: 6px; }
+
+.controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+.controls button { padding: 10px 24px; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; transition: all 0.2s; font-weight: 500; }
+.controls button.primary { background: #4096ff; color: #fff; }
+.controls button.primary:hover { background: #1677ff; }
+.controls button.success { background: #52c41a; color: #fff; }
+.controls button.success:hover { background: #49aa19; }
+.controls button.warn { background: #fa8c16; color: #fff; }
+.controls button.warn:hover { background: #e87a0d; }
+.controls button.danger { background: #ff4d4f; color: #fff; }
+.controls button.danger:hover { background: #e04345; }
+.controls button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+.stat-card { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 16px; text-align: center; }
+.stat-card .stat-value { font-size: 28px; font-weight: bold; color: #4096ff; }
+.stat-card .stat-label { font-size: 12px; color: #999; margin-top: 4px; }
+
+.gantt-container { text-align: center; }
+.gantt-container img { max-width: 100%; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.gantt-container .placeholder { padding: 60px; color: #999; font-size: 14px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: auto; }
+thead th {
+  background: #f0f5ff;
+  color: #1a1a2e;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 10px 14px;
+  text-align: left;
+  border-right: 1px solid #c0c8d8;
+  border-bottom: 2px solid #4096ff;
+  white-space: nowrap;
+  user-select: none;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+thead th:first-child { border-left: 1px solid #c0c8d8; }
+thead th:last-child { border-right: 1px solid #c0c8d8; }
+tbody td {
+  padding: 8px 14px;
+  border-right: 1px solid #d0d0d0;
+  border-bottom: 1px solid #d0d0d0;
+  font-family: 'Consolas', 'Courier New', 'Source Code Pro', monospace;
+  font-size: 12.5px;
+  color: #333;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+tbody td:first-child { border-left: 1px solid #d0d0d0; }
+tbody td:last-child { border-right: 1px solid #d0d0d0; }
+tbody tr:nth-child(even) td { background: #fafbfc; }
+tbody tr:hover td { background: #f0f5ff !important; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
+.badge-ok { background: #f6ffed; color: #52c41a; }
+.badge-warn { background: #fff7e6; color: #fa8c16; }
+.badge-error { background: #fff1f0; color: #ff4d4f; }
+.badge-info { background: #e6f4ff; color: #1677ff; }
+
+/* 操作按钮 */
+.btn-sm { padding: 3px 10px; font-size: 12px; border: 1px solid #d9d9d9; border-radius: 4px; cursor: pointer; background: #fff; transition: all 0.15s; }
+.btn-sm:hover { border-color: #4096ff; color: #4096ff; }
+.btn-sm.delay-btn { border-color: #fa8c16; color: #fa8c16; background: #fff7e6; }
+.btn-sm.delay-btn:hover { background: #fa8c16; color: #fff; }
+.btn-sm.del-btn { border-color: #ff4d4f; color: #ff4d4f; background: #fff1f0; }
+.btn-sm.del-btn:hover { background: #ff4d4f; color: #fff; }
+
+/* 已调整的行高亮 */
+tr.adjusted td { background: #fff7e6 !important; }
+tr.adjusted:hover td { background: #ffe7ba !important; }
+
+.loading { text-align: center; padding: 40px; color: #999; }
+.spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #e8e8e8; border-top-color: #4096ff; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.toast { position: fixed; top: 20px; right: 20px; padding: 10px 20px; border-radius: 6px; color: #fff; font-size: 14px; z-index: 1000; opacity: 0; transition: opacity 0.3s; }
+.toast.show { opacity: 1; }
+.toast.error { background: #ff4d4f; }
+.toast.success { background: #52c41a; }
+.toast.info { background: #4096ff; }
+
+.hidden { display: none; }
+
+/* ── 模态框 ── */
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.45); z-index: 999; justify-content: center; align-items: center; }
+.modal-overlay.active { display: flex; }
+.modal { background: #fff; border-radius: 12px; padding: 28px; width: 480px; max-width: 90vw; box-shadow: 0 8px 32px rgba(0,0,0,0.18); }
+.modal h3 { font-size: 16px; margin-bottom: 20px; color: #1a1a2e; }
+.modal .info-row { display: flex; gap: 12px; margin-bottom: 12px; font-size: 13px; }
+.modal .info-row label { color: #888; min-width: 70px; }
+.modal .info-row span { color: #333; font-weight: 500; }
+.modal .form-group { margin-bottom: 16px; }
+.modal .form-group label { display: block; font-size: 13px; color: #555; margin-bottom: 6px; font-weight: 500; }
+.modal .form-group input { width: 100%; padding: 10px 12px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 14px; font-family: 'Consolas', monospace; }
+.modal .form-group input:focus { outline: none; border-color: #4096ff; box-shadow: 0 0 0 2px rgba(64,150,255,0.2); }
+.modal .form-group .hint { font-size: 11px; color: #999; margin-top: 4px; }
+.modal .quick-btns { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.modal .quick-btns button { padding: 5px 12px; font-size: 12px; border: 1px solid #d9d9d9; border-radius: 4px; cursor: pointer; background: #fafafa; transition: all 0.15s; }
+.modal .quick-btns button:hover { border-color: #4096ff; color: #4096ff; background: #f0f5ff; }
+.modal .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+.modal .modal-actions button { padding: 8px 20px; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 500; }
+.modal .modal-actions .btn-cancel { background: #f5f5f5; color: #666; }
+.modal .modal-actions .btn-confirm { background: #4096ff; color: #fff; }
+.modal .modal-actions .btn-confirm:hover { background: #1677ff; }
+.modal .modal-actions .btn-cancel:hover { background: #e8e8e8; }
+
+/* 筛选器 */
+.filter-row { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.filter-row select, .filter-row input { padding: 6px 10px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 13px; }
+.filter-row select:focus, .filter-row input:focus { outline: none; border-color: #4096ff; }
+.filter-row input { width: 200px; }
+
+/* 多选下拉复选框 */
+.multi-select-dropdown { position: relative; display: inline-block; min-width: 200px; }
+.multi-select-btn { width: 100%; padding: 6px 10px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 13px; background: #fff; cursor: pointer; text-align: left; display: flex; justify-content: space-between; align-items: center; }
+.multi-select-btn:hover { border-color: #4096ff; }
+.multi-select-btn .arrow { font-size: 10px; color: #999; }
+.multi-select-panel { display: none; position: absolute; top: 100%; left: 0; z-index: 100; background: #fff; border: 1px solid #d9d9d9; border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 260px; max-height: 300px; overflow: hidden; }
+.multi-select-panel.open { display: block; }
+.multi-select-search { width: calc(100% - 20px); margin: 8px 10px; padding: 6px 10px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 13px; }
+.multi-select-search:focus { outline: none; border-color: #4096ff; }
+.multi-select-actions { display: flex; gap: 6px; padding: 0 10px 6px 10px; border-bottom: 1px solid #f0f0f0; }
+.multi-select-list { max-height: 200px; overflow-y: auto; padding: 4px 0; }
+.multi-select-list label { display: flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.multi-select-list label:hover { background: #f0f5ff; }
+.multi-select-list label.hidden { display: none; }
+.multi-select-list input[type="checkbox"] { margin: 0; }
+</style>
+<style id="trae-panel-enter-style">
+        @keyframes trae-panel-enter {
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
+        }
+      </style></head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>排程可视化报表</h1>
+    <div class="nav-links">
+      <a href="/">数据管理</a>
+      <a href="/reports" class="active">可视化报表</a>
+      <button id="shutdownBtn" class="nav-btn shutdown" title="关闭本地服务并退出程序">&#128682; 退出程序</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="controls">
+      <button class="primary" id="generateBtn" onclick="generateReport()">生成排程报表</button>
+      <button class="success hidden" id="downloadBtn" onclick="downloadExcel()">下载 Excel 报表</button>
+      <button class="warn" id="healthBtn" onclick="runHealthCheck()">数据体检</button>
+      <span id="healthSummary" style="font-size:12px;color:#999;"></span>
+    </div>
+  </div>
+
+  <!-- 数据体检结果 -->
+  <div class="card hidden" id="healthCard">
+    <h2>数据体检结果</h2>
+    <div class="stats-row" style="grid-template-columns:repeat(2,1fr);">
+      <div class="stat-card"><div class="stat-value" id="healthErr" style="color:#ff4d4f;">0</div><div class="stat-label">严重问题</div></div>
+      <div class="stat-card"><div class="stat-value" id="healthWarn" style="color:#fa8c16;">0</div><div class="stat-label">建议修复</div></div>
+    </div>
+    <h3 style="color:#ff4d4f;">严重问题（会导致排程失败/结果错误）</h3>
+    <div class="table-wrap" style="max-height:200px;">
+      <table><thead><tr><th>问题</th></tr></thead><tbody id="healthErrBody"></tbody></table>
+    </div>
+    <h3 style="color:#fa8c16;">建议修复（可能导致结果偏差）</h3>
+    <div class="table-wrap" style="max-height:200px;">
+      <table><thead><tr><th>问题</th></tr></thead><tbody id="healthWarnBody"></tbody></table>
+    </div>
+  </div>
+
+  <!-- 多方案快照对比 -->
+  <div class="card">
+    <h2>多方案快照对比</h2>
+    <div class="controls">
+      <span style="font-size:13px;color:#555;font-weight:500;">方案数量:</span>
+      <input type="number" id="snapNum" value="3" min="1" max="8" style="width:70px;padding:6px 10px;border:1px solid #d9d9d9;border-radius:4px;">
+      <button class="primary" id="snapGenBtn" onclick="generateSnapshots()">生成多方案</button>
+      <button class="btn-sm" onclick="loadSnapshots()" style="padding:6px 14px;">刷新列表</button>
+      <span class="badge badge-info hidden" id="snapCurrent"></span>
+    </div>
+    <p style="font-size:12px;color:#999;margin-bottom:14px;">用多个随机种子各跑一遍排程并保存为快照，可对比得分 / Q-time 余量 / 告警数，点击「查看」切换展示任意方案（甘特图与手动调整面板随方案切换）。</p>
+    <div class="table-wrap" style="max-height:320px;">
+      <table>
+        <thead><tr>
+          <th>方案</th><th>Seed</th><th>得分(越小越好)</th><th>Q-time余量</th><th>Q-time告警</th><th>校验错误</th><th>有效/总轮次</th><th>创建时间</th><th style="width:200px;">操作</th>
+        </tr></thead>
+        <tbody id="snapBody"><tr><td colspan="9" style="text-align:center;color:#999;">暂无快照，点击「生成多方案」创建</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 统计卡片 -->
+  <div class="stats-row hidden" id="statsRow">
+    <div class="stat-card">
+      <div class="stat-value" id="statLotEntries">-</div>
+      <div class="stat-label">Lot 步骤记录</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="statEqpEntries">-</div>
+      <div class="stat-label">设备排程记录</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="statQtimeAlerts">-</div>
+      <div class="stat-label">Q-time 告警</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="statLots">-</div>
+      <div class="stat-label">排程 Lot 数</div>
+    </div>
+    <div class="stat-card hidden" id="statTardyCard">
+      <div class="stat-value" id="statTardy" style="color:#fa8c16;">-</div>
+      <div class="stat-label">交期延期批次</div>
+    </div>
+    <div class="stat-card hidden" id="statMarginCard">
+      <div class="stat-value" id="statMargin">-</div>
+      <div class="stat-label">Q-time 最小余量(min)</div>
+    </div>
+  </div>
+
+  <!-- Lot 甘特图 -->
+  <div class="card hidden" id="lotGanttCard">
+    <h2>Lot 维度甘特图</h2>
+    <div class="gantt-controls">
+      <div class="filter-row">
+        <label>时间范围:</label>
+        <input type="date" id="lotTimeStart" style="width:150px;">
+        <span>至</span>
+        <input type="date" id="lotTimeEnd" style="width:150px;">
+      </div>
+      <div class="filter-row">
+        <label>Lot 筛选:</label>
+        <div class="multi-select-dropdown" id="lotDropdown">
+          <button class="multi-select-btn" onclick="toggleDropdown('lotDropdown')">
+            <span id="lotSelectedText">全部 Lot</span>
+            <span class="arrow">▼</span>
+          </button>
+          <div class="multi-select-panel" id="lotDropdownPanel">
+            <input type="text" class="multi-select-search" placeholder="搜索 Lot..." oninput="filterDropdown('lotDropdown', this.value)">
+            <div class="multi-select-actions">
+              <button class="btn-sm" onclick="dropdownSelectAll('lotDropdown')">全选</button>
+              <button class="btn-sm" onclick="dropdownDeselectAll('lotDropdown')">取消全选</button>
+            </div>
+            <div class="multi-select-list" id="lotDropdownList"></div>
+          </div>
+        </div>
+      </div>
+      <button class="primary" onclick="showLotGantt()">展示甘特图</button>
+      <button class="btn-sm" onclick="downloadGantt('lot')" style="margin-left:8px;">下载PNG</button>
+      <button class="btn-sm" onclick="openGanttHtml('lot')" style="margin-left:8px;">交互甘特图</button>
+    </div>
+    <div class="gantt-container" id="lotGanttContainer">
+      <div class="placeholder">请选择筛选条件后点击"展示甘特图"</div>
+    </div>
+  </div>
+
+  <!-- 设备甘特图 -->
+  <div class="card hidden" id="eqpGanttCard">
+    <h2>设备维度甘特图</h2>
+    <div class="gantt-controls">
+      <div class="filter-row">
+        <label>时间范围:</label>
+        <input type="date" id="eqpTimeStart" style="width:150px;">
+        <span>至</span>
+        <input type="date" id="eqpTimeEnd" style="width:150px;">
+      </div>
+      <div class="filter-row">
+        <label>设备筛选:</label>
+        <div class="multi-select-dropdown" id="eqpDropdown">
+          <button class="multi-select-btn" onclick="toggleDropdown('eqpDropdown')">
+            <span id="eqpSelectedText">全部设备</span>
+            <span class="arrow">▼</span>
+          </button>
+          <div class="multi-select-panel" id="eqpDropdownPanel">
+            <input type="text" class="multi-select-search" placeholder="搜索设备..." oninput="filterDropdown('eqpDropdown', this.value)">
+            <div class="multi-select-actions">
+              <button class="btn-sm" onclick="dropdownSelectAll('eqpDropdown')">全选</button>
+              <button class="btn-sm" onclick="dropdownDeselectAll('eqpDropdown')">取消全选</button>
+            </div>
+            <div class="multi-select-list" id="eqpDropdownList"></div>
+          </div>
+        </div>
+      </div>
+      <button class="primary" onclick="showEqpGantt()">展示甘特图</button>
+      <button class="btn-sm" onclick="downloadGantt('eqp')" style="margin-left:8px;">下载PNG</button>
+      <button class="btn-sm" onclick="openGanttHtml('eqp')" style="margin-left:8px;">交互甘特图</button>
+    </div>
+    <div class="gantt-container" id="eqpGanttContainer">
+      <div class="placeholder">请选择筛选条件后点击"展示甘特图"</div>
+    </div>
+  </div>
+
+  <!-- ====== 手动调整排程面板 ====== -->
+  <div class="card hidden" id="manualAdjustCard">
+    <h2>手动调整排程</h2>
+    <p style="font-size:12px;color:#999;margin-bottom:14px;">点击步骤行的「延迟」按钮设置该步骤不早于指定时间开始，排程将自动重新计算。</p>
+
+    <!-- 当前调整规则 -->
+    <div class="controls" style="margin-bottom:10px;flex-wrap:wrap;">
+      <span style="font-size:13px;color:#555;font-weight:500;">当前调整规则:</span>
+      <button class="warn btn-sm" id="saveAdjustsBtn" onclick="saveAdjusts()" style="padding:6px 14px;font-size:13px;">保存到文件</button>
+      <button class="btn-sm" id="reloadAdjustsBtn" onclick="reloadAdjusts()" style="padding:6px 14px;">从文件加载</button>
+      <button class="btn-sm" onclick="openDueModal()" style="padding:6px 14px;" title="输入期望完工时间，反推各步最晚开始">交期反推</button>
+    </div>
+    <div class="table-wrap" style="max-height:200px;margin-bottom:16px;" id="adjustsTableWrap">
+      <table>
+        <thead><tr><th>Lot Name</th><th>Step Name</th><th>Delay To</th><th>模式</th><th style="width:60px;">操作</th></tr></thead>
+        <tbody id="adjustsBody"><tr><td colspan="5" style="text-align:center;color:#999;">暂无手动调整规则</td></tr></tbody>
+      </table>
+    </div>
+
+    <!-- 排程步骤表（可点击延迟） -->
+    <h3>排程步骤明细 <span style="font-weight:400;font-size:12px;color:#999;">（点击「延迟」按钮调整步骤开始时间）</span></h3>
+    <div class="filter-row">
+      <select id="lotFilter" onchange="filterScheduleTable()">
+        <option value="">全部 Lot</option>
+      </select>
+      <input type="text" id="stepFilter" placeholder="搜索步骤名称..." oninput="filterScheduleTable()">
+      <span style="font-size:12px;color:#999;" id="filterCount"></span>
+    </div>
+    <div class="table-wrap" style="max-height:50vh;" id="scheduleTableWrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Lot Name</th><th>Step Name</th><th>Start Time</th><th>End Time</th><th>CT(min)</th><th>Eqp</th><th style="width:70px;">操作</th>
+          </tr>
+        </thead>
+        <tbody id="scheduleBody"><tr><td colspan="7" style="text-align:center;color:#999;">请先生成排程报表</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Lot 汇总 -->
+  <div class="card hidden" id="lotSummaryCard">
+    <h2>Lot 排程汇总</h2>
+    <div class="table-wrap">
+    <table>
+      <thead id="lotSummaryHead"></thead>
+      <tbody id="lotSummaryBody"></tbody>
+    </table>
+    </div>
+  </div>
+
+  <!-- Q-time 告警 -->
+  <div class="card hidden" id="qtimeCard">
+    <h2>Q-time 告警</h2>
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Lot Name</th>
+          <th>Q-time Rule</th>
+          <th>Start Time</th>
+          <th>Deadline</th>
+          <th>Actual End</th>
+          <th>Over (min)</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="qtimeBody"></tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="card hidden" id="schedWarnCard">
+    <h2>排程告警（跨班次 / 合理性）</h2>
+    <ul id="schedWarnList" class="warn-list" style="color:#fa8c16;margin:0;padding-left:20px;"></ul>
+  </div>
+</div>
+
+<!-- 延迟设置模态框 -->
+<div class="modal-overlay" id="delayModalOverlay">
+  <div class="modal">
+    <h3>设置步骤延迟</h3>
+    <div class="info-row"><label>Lot:</label><span id="modalLotName">-</span></div>
+    <div class="info-row"><label>Step:</label><span id="modalStepName">-</span></div>
+    <div class="info-row"><label>当前开始:</label><span id="modalCurrentStart">-</span></div>
+    <div class="form-group">
+      <label>延迟到（不早于）:</label>
+      <input type="text" id="modalDelayTo" placeholder="yyyy/mm/dd HH:MM">
+      <div class="hint">格式: yyyy/mm/dd HH:MM，例如 2026/08/07 14:00</div>
+    </div>
+    <div class="form-group">
+      <label>调整模式:</label>
+      <select id="modalMode" style="width:100%;padding:10px 12px;border:1px solid #d9d9d9;border-radius:6px;font-size:14px;">
+        <option value="delay">不早于（最早）—— 步骤不早于该时间开始</option>
+        <option value="pin">精确锁定 —— 整链以该时刻为支点压实</option>
+      </select>
+      <div class="hint">精确锁定适合"必须在该时间点附近完成"的场景（如交期反推）。</div>
+    </div>
+    <div class="quick-btns">
+      <span style="font-size:12px;color:#888;line-height:28px;">快速设置:</span>
+      <button onclick="quickDelay(1)">+1小时</button>
+      <button onclick="quickDelay(2)">+2小时</button>
+      <button onclick="quickDelay(4)">+4小时</button>
+      <button onclick="quickDelay(8)">+8小时</button>
+      <button onclick="quickDelay(12)">+12小时</button>
+      <button onclick="quickDelay(24)">+1天</button>
+      <button onclick="quickDelay(48)">+2天</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeDelayModal()">取消</button>
+      <button class="btn-confirm" onclick="confirmDelay()">确认并重新排程</button>
+    </div>
+  </div>
+</div>
+
+<!-- 交期反推模态框 -->
+<div class="modal-overlay" id="dueModalOverlay">
+  <div class="modal" style="width:700px;">
+    <h3>交期反推（期望完工时间 → 各步最晚开始）</h3>
+    <div class="form-group">
+      <label>Lot:</label>
+      <select id="dueModalLotSelect" style="width:100%;padding:7px 10px;border:1px solid #d9d9d9;border-radius:6px;"></select>
+    </div>
+    <div class="form-group">
+      <label>期望完工时间（不晚于）:</label>
+      <input type="text" id="dueModalTime" placeholder="yyyy/mm/dd HH:MM">
+      <div class="hint">格式: yyyy/mm/dd HH:MM。系统按该 Lot 的就绪时刻正推"粗略最早计划"，并从期望完工时间反推各步最晚开始时间。均为无设备竞争的粗略估算。</div>
+    </div>
+    <div class="modal-actions" style="margin-top:10px;">
+      <button class="btn-cancel" onclick="closeDueModal()">取消</button>
+      <button class="btn-confirm" onclick="runDueReverse()">反推</button>
+    </div>
+    <div id="dueResult" style="margin-top:16px;"></div>
+  </div>
+</div>
+
+<!-- 交互式甘特图模态框 -->
+<div class="modal-overlay" id="ganttModalOverlay" style="z-index:1001;">
+  <div style="width:94vw;height:92vh;background:#fff;border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,.3);display:flex;flex-direction:column;">
+    <div style="padding:10px 16px;display:flex;align-items:center;border-bottom:1px solid #eee;">
+      <strong id="ganttModalTitle" style="font-size:14px;">交互式甘特图</strong>
+      <span style="flex:1;"></span>
+      <button class="btn-sm" onclick="closeGanttModal()" style="padding:5px 14px;">关闭</button>
+    </div>
+    <iframe id="ganttIframe" style="flex:1;border:none;border-radius:0 0 10px 10px;" sandbox="allow-scripts"></iframe>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── 全局错误捕获 ──
+window.addEventListener('error', function(e) {
+  console.error('[GLOBAL-ERROR]', e.message, 'at', e.filename, 'line', e.lineno, 'col', e.colno, 'error:', e.error);
+  showToast('JS错误: ' + e.message, 'error');
+});
+
+function showToast(msg, type) {
+  console.log('[TOAST]', type, msg);
+  const toast = document.getElementById('toast');
+  if (!toast) { console.error('[TOAST] element not found'); return; }
+  toast.textContent = msg;
+  toast.className = 'toast ' + type + ' show';
+  setTimeout(() => { toast.className = 'toast'; }, 3000);
+}
+
+let reportData = null;
+let currentAdjusts = [];  // 当前内存中的手动调整
+let modalEntry = null;    // 当前正在编辑的排程条目
+
+// ── 生成报表 ──
+async function generateReport() {
+  const btn = document.getElementById('generateBtn');
+  btn.disabled = true;
+  btn.textContent = '生成中...';
+
+  document.getElementById('lotGanttCard').classList.add('hidden');
+  document.getElementById('eqpGanttCard').classList.add('hidden');
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
+    const res = await fetch('/api/generate-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error('HTTP ' + res.status + ': ' + text.substring(0, 200));
+    }
+    const data = await res.json();
+    if (data.error) {
+      showToast('生成失败: ' + data.error, 'error');
+      btn.disabled = false;
+      btn.textContent = '生成排程报表';
+      return;
+    }
+
+    reportData = data;
+    currentAdjusts = data.manual_adjusts || [];
+    renderReport(data);
+    renderManualAdjustPanel(data);
+    btn.textContent = '重新生成';
+    btn.disabled = false;
+    document.getElementById('downloadBtn').classList.remove('hidden');
+    showToast('报表生成成功!', 'success');
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      showToast('请求超时，排程计算时间较长，请重试', 'error');
+    } else {
+      console.error('[generateReport]', e);
+      showToast('报表生成失败: ' + e.message, 'error');
+    }
+    btn.disabled = false;
+    btn.textContent = '生成排程报表';
+    document.getElementById('lotGanttContainer').innerHTML = '<div class="placeholder">生成失败，请重试</div>';
+    document.getElementById('eqpGanttContainer').innerHTML = '<div class="placeholder">生成失败，请重试</div>';
+  }
+}
+
+// ── 多方案快照对比 ──
+async function generateSnapshots() {
+  const num = parseInt(document.getElementById('snapNum').value) || 3;
+  const btn = document.getElementById('snapGenBtn');
+  btn.disabled = true;
+  btn.textContent = '生成中(' + num + '个方案，约' + num + '倍耗时)...';
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 600000);
+    const res = await fetch('/api/snapshots/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ num_snapshots: num }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    const data = await res.json();
+    if (data.error) { showToast('生成失败: ' + data.error, 'error'); return; }
+    renderSnapTable(data.snapshots || []);
+    if (data.best_snapshot_id) {
+      await viewSnapshot(data.best_snapshot_id, false);
+    }
+    showToast('已生成 ' + (data.count || 0) + ' 个方案，自动展示最优方案', 'success');
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      showToast('请求超时（多方案耗时较长），请减少方案数量', 'error');
+    } else {
+      console.error('[generateSnapshots]', e);
+      showToast('生成失败: ' + e.message, 'error');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '生成多方案';
+  }
+}
+
+async function loadSnapshots() {
+  try {
+    const res = await fetch('/api/snapshots/list');
+    const data = await res.json();
+    if (data.error) { showToast('加载快照列表失败: ' + data.error, 'error'); return; }
+    renderSnapTable(data.snapshots || []);
+  } catch (e) {
+    console.error('[loadSnapshots]', e);
+    showToast('加载快照列表失败: ' + e.message, 'error');
+  }
+}
+
+function renderSnapTable(snaps) {
+  const tbody = document.getElementById('snapBody');
+  if (!snaps || !snaps.length) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;">暂无快照，点击「生成多方案」创建</td></tr>';
+    return;
+  }
+  const withScore = snaps.filter(s => s.score != null);
+  const bestScore = withScore.length ? Math.min(...withScore.map(s => s.score)) : null;
+  const sorted = snaps.slice().sort((a, b) => {
+    if (a.score == null && b.score == null) return 0;
+    if (a.score == null) return 1;
+    if (b.score == null) return -1;
+    return a.score - b.score;
+  });
+  tbody.innerHTML = sorted.map(s => {
+    const isBest = s.score != null && bestScore != null && Math.abs(s.score - bestScore) < 1e-6;
+    const idShort = s.snapshot_id.length > 24 ? s.snapshot_id.substring(0, 24) + '…' : s.snapshot_id;
+    return '<tr>' +
+      '<td><strong>' + h(idShort) + '</strong>' + (isBest ? ' <span class="badge badge-ok">最优</span>' : '') + '</td>' +
+      '<td>' + h(s.seed) + '</td>' +
+      '<td style="' + (isBest ? 'color:#52c41a;font-weight:600;' : '') + '">' + (s.score != null ? Number(s.score).toFixed(1) : '<em style="color:#ff4d4f;">无合法解</em>') + '</td>' +
+      '<td>' + (s.min_qtime_margin != null ? Number(s.min_qtime_margin).toFixed(1) : '-') + '</td>' +
+      '<td>' + (s.qtime_alerts > 0 ? '<span class="badge badge-error">' + s.qtime_alerts + '</span>' : '<span class="badge badge-ok">0</span>') + '</td>' +
+      '<td>' + (s.validation_errors > 0 ? '<span class="badge badge-warn">' + s.validation_errors + '</span>' : '<span class="badge badge-ok">0</span>') + '</td>' +
+      '<td>' + s.valid_iterations + '/' + s.total_iterations + '</td>' +
+      '<td>' + h(s.created_at) + '</td>' +
+      '<td>' +
+        '<button class="btn-sm" onclick="viewSnapshot(\'' + h(s.snapshot_id) + '\')" style="margin-right:4px;">查看</button>' +
+        '<button class="btn-sm" onclick="downloadSnapshotExcel(\'' + h(s.snapshot_id) + '\')" style="margin-right:4px;">Excel</button>' +
+        '<button class="btn-sm del-btn" onclick="deleteSnapshot(\'' + h(s.snapshot_id) + '\')">删除</button>' +
+      '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+async function viewSnapshot(id, notify) {
+  try {
+    const res = await fetch('/api/snapshots/get/' + encodeURIComponent(id));
+    const data = await res.json();
+    if (data.error) { showToast('加载失败: ' + data.error, 'error'); return; }
+    reportData = data;
+    currentAdjusts = data.manual_adjusts || [];
+    renderReport(data);
+    renderManualAdjustPanel(data);
+    document.getElementById('downloadBtn').classList.remove('hidden');
+    const cur = document.getElementById('snapCurrent');
+    cur.textContent = '当前查看: ' + id + ' (seed=' + (data.seed != null ? data.seed : '?') + ')';
+    cur.classList.remove('hidden');
+    if (notify !== false) showToast('已切换到该方案 (seed=' + (data.seed != null ? data.seed : '?') + ')', 'success');
+  } catch (e) {
+    console.error('[viewSnapshot]', e);
+    showToast('加载失败: ' + e.message, 'error');
+  }
+}
+
+function downloadSnapshotExcel(id) {
+  window.open('/api/snapshots/export/' + encodeURIComponent(id), '_blank');
+}
+
+async function deleteSnapshot(id) {
+  if (!confirm('确定删除该快照方案？')) return;
+  try {
+    const res = await fetch('/api/snapshots/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ snapshot_id: id }),
+    });
+    const data = await res.json();
+    if (data.error) { showToast('删除失败: ' + data.error, 'error'); return; }
+    await loadSnapshots();
+    showToast('已删除该快照', 'success');
+  } catch (e) {
+    console.error('[deleteSnapshot]', e);
+    showToast('删除失败: ' + e.message, 'error');
+  }
+}
+
+// ── 数据体检 ──
+async function runHealthCheck() {
+  const btn = document.getElementById('healthBtn');
+  btn.disabled = true;
+  btn.textContent = '体检中...';
+  try {
+    const res = await fetch('/api/health-check', { method: 'POST' });
+    const data = await res.json();
+    if (data.error) { showToast('数据体检失败: ' + data.error, 'error'); return; }
+    document.getElementById('healthCard').classList.remove('hidden');
+    document.getElementById('healthErr').textContent = data.error_count;
+    document.getElementById('healthWarn').textContent = data.warning_count;
+    const errBody = document.getElementById('healthErrBody');
+    const warnBody = document.getElementById('healthWarnBody');
+    errBody.innerHTML = (data.errors || []).map(e => '<tr><td style="color:#ff4d4f;">' + h(e) + '</td></tr>').join('')
+      || '<tr><td style="color:#999;">无严重问题</td></tr>';
+    warnBody.innerHTML = (data.warnings || []).map(w => '<tr><td style="color:#fa8c16;">' + h(w) + '</td></tr>').join('')
+      || '<tr><td style="color:#999;">无建议项</td></tr>';
+    const summary = document.getElementById('healthSummary');
+    if (data.error_count === 0 && data.warning_count === 0) {
+      summary.textContent = '数据体检通过 ✓';
+      summary.style.color = '#52c41a';
+    } else {
+      summary.textContent = data.error_count + ' 严重 / ' + data.warning_count + ' 建议';
+      summary.style.color = data.error_count > 0 ? '#ff4d4f' : '#fa8c16';
+    }
+    showToast('数据体检完成', data.error_count > 0 ? 'error' : 'success');
+  } catch (e) {
+    console.error('[runHealthCheck]', e);
+    showToast('数据体检失败: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '数据体检';
+  }
+}
+
+// ── 交期反推 ──
+let dueModalLot = '';
+function openDueModal(lot) {
+  // 收集所有 Lot（排程结果 + 手动调整规则中出现的）
+  const lotSet = new Set();
+  if (reportData && Array.isArray(reportData.lot_entries_data)) {
+    reportData.lot_entries_data.forEach(e => { if (e && e.lot_name) lotSet.add(e.lot_name); });
+  }
+  if (Array.isArray(currentAdjusts)) {
+    currentAdjusts.forEach(a => { if (a && a.lot_name) lotSet.add(a.lot_name); });
+  }
+  const lots = [...lotSet];
+  const sel = document.getElementById('dueModalLotSelect');
+  sel.innerHTML = lots.map(l => '<option value="' + h(l) + '">' + h(l) + '</option>').join('')
+    || '<option value="">（无 Lot 数据，请先生成排程报表）</option>';
+  const target = lot && lots.includes(lot) ? lot : (lots[0] || '');
+  sel.value = target;
+  dueModalLot = target;
+  document.getElementById('dueModalTime').value = '';
+  document.getElementById('dueResult').innerHTML = '';
+  document.getElementById('dueModalOverlay').classList.add('active');
+}
+function closeDueModal() {
+  document.getElementById('dueModalOverlay').classList.remove('active');
+}
+async function runDueReverse() {
+  dueModalLot = document.getElementById('dueModalLotSelect').value;
+  if (!dueModalLot) { showToast('请先生成排程报表再使用交期反推', 'error'); return; }
+  const dueStr = document.getElementById('dueModalTime').value.trim();
+  if (!dueStr) { showToast('请输入期望完工时间', 'error'); return; }
+  const resDiv = document.getElementById('dueResult');
+  resDiv.innerHTML = '<div class="loading"><span class="spinner"></span>反推中...</div>';
+  try {
+    const res = await fetch('/api/due-reverse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lot_name: dueModalLot, due_time: dueStr }),
+    });
+    const data = await res.json();
+    if (data.error) { resDiv.innerHTML = '<p style="color:#ff4d4f;font-size:13px;">' + h(data.error) + '</p>'; return; }
+    const feasibleHtml = data.feasible
+      ? '<span class="badge badge-ok">交期可行（粗略）</span>'
+      : '<span class="badge badge-error">交期紧张：粗略最早完工 ' + h(data.earliest_completion) + ' 晚于交期</span>';
+    const lastStep = data.steps[data.steps.length - 1] || {};
+    // 正推表（粗略最早计划）
+    const forwardHtml = '<h4 style="margin:10px 0 6px;font-size:13px;color:#555;">粗略最早计划（从该 Lot 就绪时刻 ' +
+      h(data.ready_time || '-') + ' 无设备竞争正推）</h4>' +
+      '<div class="table-wrap" style="max-height:220px;">' +
+      '<table><thead><tr><th>步骤</th><th>CT(min)</th><th>最早开始</th><th>最早结束</th></tr></thead>' +
+      '<tbody>' + (data.forward_steps || []).map(s =>
+        '<tr><td>' + h(s.step_name) + '</td><td>' + s.ct + '</td><td>' + h(s.earliest_start) + '</td><td>' + h(s.earliest_end) + '</td></tr>'
+      ).join('') + '</tbody></table></div>';
+    // 反推表（满足交期的最晚开始）
+    const reverseHtml = '<h4 style="margin:10px 0 6px;font-size:13px;color:#555;">最晚开始（满足交期 ' + h(data.due_time) + '，反推）</h4>' +
+      '<div class="table-wrap" style="max-height:220px;">' +
+      '<table><thead><tr><th>步骤</th><th>CT(min)</th><th>最晚开始</th><th>最晚结束</th></tr></thead>' +
+      '<tbody>' + (data.steps || []).map(s =>
+        '<tr><td>' + h(s.step_name) + '</td><td>' + s.ct + '</td><td>' + h(s.latest_start) + '</td><td>' + h(s.latest_end) + '</td></tr>'
+      ).join('') + '</tbody></table></div>';
+    resDiv.innerHTML =
+      '<div style="font-size:13px;margin-bottom:10px;">' + feasibleHtml +
+      '  <span style="color:#666;margin-left:8px;">剩余流程总时长约 ' + data.total_minutes + ' 分钟</span>' +
+      '  <div style="color:#999;font-size:11px;margin-top:4px;">' + h(data.note || '') + '</div></div>' +
+      forwardHtml + reverseHtml +
+      '<div style="margin-top:12px;">' +
+      '<button class="btn-sm" onclick="pinDueResult(\'' + h(lastStep.step_name || '') + '\',\'' + h(lastStep.latest_start || '') + '\')" title="把末步锁定在不晚于该时刻开始，从而尽量保证在交期内完成">锁定末步最晚开始（尽量保证交期）</button>' +
+      '<span style="font-size:11px;color:#999;margin-left:8px;">点击后需重新生成排程生效</span>' +
+      '</div>';
+  } catch (e) {
+    console.error('[runDueReverse]', e);
+    resDiv.innerHTML = '<p style="color:#ff4d4f;font-size:13px;">反推失败: ' + h(e.message) + '</p>';
+  }
+}
+async function pinDueResult(stepName, dueStr) {
+  try {
+    const res = await fetch('/api/manual-adjust', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lot_name: dueModalLot, step_name: stepName, delay_to: dueStr, mode: 'pin' }),
+    });
+    const data = await res.json();
+    if (data.error) { showToast('锁定失败: ' + data.error, 'error'); return; }
+    currentAdjusts = data.manual_adjusts || [];
+    renderAdjustsTable();
+    closeDueModal();
+    showToast('已把目标步骤锁定在 ' + dueStr + '，请重新生成排程', 'info');
+  } catch (e) {
+    console.error('[pinDueResult]', e);
+    showToast('锁定失败: ' + e.message, 'error');
+  }
+}
+
+// ── 交互式甘特图 ──
+async function openGanttHtml(type) {
+  const title = document.getElementById('ganttModalTitle');
+  title.textContent = (type === 'lot' ? 'Lot 维度' : '设备维度') + '交互式甘特图（滚轮缩放/拖拽平移/悬停详情）';
+  document.getElementById('ganttModalOverlay').classList.add('active');
+  const iframe = document.getElementById('ganttIframe');
+  iframe.srcdoc = '<div style="font-family:sans-serif;color:#999;text-align:center;padding:40px">加载中...</div>';
+  const body = { type };
+  if (type === 'lot') {
+    body.lot_names = [];
+    document.querySelectorAll('#lotDropdownList .lot-cb:checked').forEach(cb => body.lot_names.push(cb.value));
+  } else {
+    body.eqp_ids = [];
+    document.querySelectorAll('#eqpDropdownList .eqp-cb:checked').forEach(cb => body.eqp_ids.push(cb.value));
+  }
+  try {
+    const res = await fetch('/api/generate-gantt-html', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.error) {
+      iframe.srcdoc = '<div style="font-family:sans-serif;color:#ff4d4f;text-align:center;padding:40px">' + data.error + '</div>';
+      return;
+    }
+    iframe.srcdoc = data.html;
+  } catch (e) {
+    console.error('[openGanttHtml]', e);
+    iframe.srcdoc = '<div style="font-family:sans-serif;color:#ff4d4f;text-align:center;padding:40px">生成失败: ' + h(e.message) + '</div>';
+  }
+}
+function closeGanttModal() {
+  document.getElementById('ganttModalOverlay').classList.remove('active');
+  document.getElementById('ganttIframe').srcdoc = '';
+}
+document.getElementById('ganttModalOverlay').addEventListener('click', function(e) {
+  if (e.target === this) closeGanttModal();
+});
+document.getElementById('dueModalOverlay').addEventListener('click', function(e) {
+  if (e.target === this) closeDueModal();
+});
+
+function renderReport(data) {
+  console.log('[renderReport] called, data keys:', data ? Object.keys(data) : 'null');
+  try {
+  document.getElementById('statsRow').classList.remove('hidden');
+  document.getElementById('statLotEntries').textContent = data.stats.lot_entries;
+  document.getElementById('statEqpEntries').textContent = data.stats.eqp_entries;
+  document.getElementById('statQtimeAlerts').textContent = data.stats.qtime_alerts;
+  const _ls = data.lot_summaries || {};
+  document.getElementById('statLots').textContent = Array.isArray(_ls) ? _ls.length : ((_ls.rows || []).length);
+  // 交期 KPI（有 planned_end 时显示）
+  const tardyCard = document.getElementById('statTardyCard');
+  const marginCard = document.getElementById('statMarginCard');
+  if (data.stats.tardy_lots != null) {
+    tardyCard.classList.remove('hidden');
+    document.getElementById('statTardy').textContent = data.stats.tardy_lots;
+    if (data.stats.tardy_lots > 0) document.getElementById('statTardy').style.color = '#ff4d4f';
+  } else {
+    tardyCard.classList.add('hidden');
+  }
+  if (data.stats.min_qtime_margin != null) {
+    marginCard.classList.remove('hidden');
+    document.getElementById('statMargin').textContent = Number(data.stats.min_qtime_margin).toFixed(1);
+  } else {
+    marginCard.classList.add('hidden');
+  }
+
+  // 甘特图卡片：显示筛选面板，不自动生成图片
+  document.getElementById('lotGanttCard').classList.remove('hidden');
+  document.getElementById('eqpGanttCard').classList.remove('hidden');
+  document.getElementById('lotGanttContainer').innerHTML = '<div class="placeholder">请选择筛选条件后点击"展示甘特图"</div>';
+  document.getElementById('eqpGanttContainer').innerHTML = '<div class="placeholder">请选择筛选条件后点击"展示甘特图"</div>';
+
+  // 填充 Lot 筛选下拉复选框
+  const lotNames = data.available_lot_names || [];
+  const lotList = document.getElementById('lotDropdownList');
+  lotList.innerHTML = lotNames.map(l =>
+    '<label><input type="checkbox" class="lot-cb" value="' + h(l) + '" checked> ' + h(l) + '</label>'
+  ).join('');
+
+  // 填充设备筛选下拉复选框
+  const eqpIds = data.available_eqp_ids || [];
+  const eqpList = document.getElementById('eqpDropdownList');
+  eqpList.innerHTML = eqpIds.map(e =>
+    '<label><input type="checkbox" class="eqp-cb" value="' + h(e) + '" checked> ' + h(e) + '</label>'
+  ).join('');
+
+  document.getElementById('lotSummaryCard').classList.remove('hidden');
+  const summary = data.lot_summaries || {};
+  const shiftColumns = summary.shift_columns || [];
+  const rows = summary.rows || [];
+  const hasDue = rows.some(r => r && r.planned_end);
+
+  // 表头
+  document.getElementById('lotSummaryHead').innerHTML =
+    '<tr><th>Lot Name</th><th>完工</th>' + (hasDue ? '<th>计划交期</th><th>延期(min)</th>' : '') +
+    shiftColumns.map(c => '<th>' + h(c) + '</th>').join('') + '</tr>';
+
+  // 数据行
+  document.getElementById('lotSummaryBody').innerHTML = rows.map(r => {
+    const tardyHtml = (r.tardiness == null)
+      ? '-'
+      : (r.tardiness > 0
+          ? '<span class="badge badge-error">' + Number(r.tardiness).toFixed(0) + '</span>'
+          : '<span class="badge badge-ok">' + Number(r.tardiness).toFixed(0) + '</span>');
+    return '<tr>' +
+      '<td><strong>' + h(r.lot_name) + '</strong></td>' +
+      '<td>' + h(r.finish_time || '-') + '</td>' +
+      (hasDue ? '<td>' + h(r.planned_end || '-') + '</td><td>' + tardyHtml + '</td>' : '') +
+      shiftColumns.map(c => '<td>' + h(r.steps[c] || '-') + '</td>').join('') +
+      '</tr>';
+  }).join('');
+
+  if (Array.isArray(data.qtime_alerts) && data.qtime_alerts.length > 0) {
+    document.getElementById('qtimeCard').classList.remove('hidden');
+    document.getElementById('qtimeBody').innerHTML = data.qtime_alerts.filter(a => a && a.lot_name).map(a =>
+      '<tr>' +
+      '<td><strong>' + h(a.lot_name) + '</strong></td>' +
+      '<td>' + h(a.qtime_rule) + '</td>' +
+      '<td>' + h(a.start_time) + '</td>' +
+      '<td>' + h(a.deadline) + '</td>' +
+      '<td>' + h(a.actual_end) + '</td>' +
+      '<td>' + a.over_minutes + '</td>' +
+      '<td><span class="badge badge-error">' + h(a.status) + '</span></td>' +
+      '</tr>'
+    ).join('');
+  } else {
+    document.getElementById('qtimeCard').classList.add('hidden');
+  }
+
+  // 排程告警（跨班次风险 / 排程合理性）：终端已静音，改为在报表页展示
+  const schedWarns = data.schedule_warnings || [];
+  const schedWarnCard = document.getElementById('schedWarnCard');
+  const schedWarnList = document.getElementById('schedWarnList');
+  if (schedWarns.length > 0) {
+    schedWarnList.innerHTML = schedWarns.map(w => '<li>' + h(w) + '</li>').join('');
+    schedWarnCard.classList.remove('hidden');
+  } else {
+    schedWarnCard.classList.add('hidden');
+  }
+  } catch (e) {
+    console.error('[renderReport] ERROR:', e.message, e.stack);
+    showToast('renderReport错误: ' + e.message, 'error');
+  }
+}
+
+// ── 手动调整面板 ──
+function renderManualAdjustPanel(data) {
+  console.log('[renderManualAdjustPanel] called');
+  try {
+  document.getElementById('manualAdjustCard').classList.remove('hidden');
+
+  // 当前调整规则表
+  renderAdjustsTable();
+
+  // 排程步骤表
+  renderScheduleTable(data.lot_entries_data);
+
+  // 填充 Lot 筛选器
+  const entries = Array.isArray(data.lot_entries_data) ? data.lot_entries_data.filter(e => e && e.lot_name) : [];
+  const lotNames = [...new Set(entries.map(e => e.lot_name))];
+  const sel = document.getElementById('lotFilter');
+  sel.innerHTML = '<option value="">全部 Lot</option>' + lotNames.map(l => '<option value="' + h(l) + '">' + h(l) + '</option>').join('');
+  } catch (e) {
+    console.error('[renderManualAdjustPanel] ERROR:', e.message, e.stack);
+    showToast('renderManualAdjustPanel错误: ' + e.message, 'error');
+  }
+}
+
+function renderAdjustsTable() {
+  console.log('[renderAdjustsTable] called, currentAdjusts:', JSON.stringify(currentAdjusts).substring(0, 200));
+  try {
+  const tbody = document.getElementById('adjustsBody');
+  const adjusts = Array.isArray(currentAdjusts) ? currentAdjusts.filter(a => a && a.lot_name) : [];
+  if (adjusts.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;">暂无手动调整规则</td></tr>';
+  } else {
+    tbody.innerHTML = adjusts.map((a, i) =>
+      '<tr>' +
+      '<td><strong>' + h(a.lot_name) + '</strong></td>' +
+      '<td>' + (a.step_name ? h(a.step_name) : '<em style="color:#999;">整个Lot</em>') + '</td>' +
+      '<td><span class="badge badge-info">' + h(a.delay_to) + '</span></td>' +
+      '<td>' + ((a.mode && a.mode === 'pin') ? '<span class="badge" style="background:#e6f4ff;color:#1677ff;">锁定</span>' : '<span class="badge badge-info">最早</span>') + '</td>' +
+      '<td><button class="btn-sm del-btn" data-idx="' + i + '" data-lot="' + h(a.lot_name) + '" data-step="' + h(a.step_name || '') + '" data-delay="' + h(a.delay_to || '') + '" data-mode="' + h(a.mode || 'delay') + '" onclick="deleteAdjust(this)">删除</button></td>' +
+      '</tr>'
+    ).join('');
+  }
+  } catch (e) {
+    console.error('[renderAdjustsTable] ERROR:', e.message, e.stack);
+    showToast('renderAdjustsTable错误: ' + e.message, 'error');
+  }
+}
+
+function renderScheduleTable(entries) {
+  console.log('[renderScheduleTable] called, entries count:', Array.isArray(entries) ? entries.length : 'not array');
+  try {
+  const tbody = document.getElementById('scheduleBody');
+  if (!Array.isArray(entries)) { entries = []; }
+  // 构建调整查找表
+  const adjustMap = {};
+  const adjusts = Array.isArray(currentAdjusts) ? currentAdjusts.filter(a => a && a.lot_name) : [];
+  adjusts.forEach(a => {
+    const key = a.lot_name + '|' + (a.step_name || '');
+    adjustMap[key] = a;
+  });
+
+  tbody.innerHTML = entries.filter(e => e && e.lot_name).map((e, i) => {
+    const stepKey = e.lot_name + '|' + e.step_name;
+    const lotKey = e.lot_name + '|';
+    const isAdjusted = adjustMap[stepKey] || adjustMap[lotKey];
+    return '<tr class="' + (isAdjusted ? 'adjusted' : '') + '" data-lot="' + h(e.lot_name) + '" data-step="' + h(e.step_name) + '">' +
+      '<td><strong>' + h(e.lot_name) + '</strong></td>' +
+      '<td>' + h(e.step_name) + '</td>' +
+      '<td>' + h(e.start_time) + '</td>' +
+      '<td>' + h(e.end_time) + '</td>' +
+      '<td>' + e.ct + '</td>' +
+      '<td>' + h(e.eqp_id) + '</td>' +
+      '<td><button class="btn-sm delay-btn" onclick="openDelayModal(this)">延迟</button></td>' +
+      '</tr>';
+  }).join('');
+
+  document.getElementById('filterCount').textContent = entries.length + ' 条记录';
+  } catch (e) {
+    console.error('[renderScheduleTable] ERROR:', e.message, e.stack);
+    showToast('renderScheduleTable错误: ' + e.message, 'error');
+  }
+}
+
+function filterScheduleTable() {
+  console.log('[filterScheduleTable] called');
+  try {
+  if (!reportData) return;
+  const lotFilter = document.getElementById('lotFilter').value;
+  const stepFilter = document.getElementById('stepFilter').value.toLowerCase();
+  let entries = reportData.lot_entries_data;
+  if (!Array.isArray(entries)) { entries = []; }
+  if (lotFilter) entries = entries.filter(e => e && e.lot_name === lotFilter);
+  if (stepFilter) entries = entries.filter(e => e && e.step_name && e.step_name.toLowerCase().includes(stepFilter));
+  renderScheduleTable(entries);
+  } catch (e) {
+    console.error('[filterScheduleTable] ERROR:', e.message, e.stack);
+    showToast('filterScheduleTable错误: ' + e.message, 'error');
+  }
+}
+
+// ── 延迟模态框 ──
+function openDelayModal(btn) {
+  console.log('[openDelayModal] called');
+  try {
+  // 从按钮所在的 tr 获取 lot_name 和 step_name
+  const tr = btn.closest('tr');
+  if (!tr || !reportData || !Array.isArray(reportData.lot_entries_data)) {
+    showToast('数据未加载，请先生成报表', 'error');
+    return;
+  }
+  const lotName = tr.dataset.lot;
+  const stepName = tr.dataset.step;
+  console.log('[openDelayModal] lotName:', lotName, 'stepName:', stepName);
+  // 在原始数据中查找
+  const entry = reportData.lot_entries_data.find(
+    e => e && e.lot_name === lotName && e.step_name === stepName
+  );
+  if (!entry) {
+    showToast('未找到该步骤数据', 'error');
+    return;
+  }
+  modalEntry = entry;
+
+  document.getElementById('modalLotName').textContent = entry.lot_name;
+  document.getElementById('modalStepName').textContent = entry.step_name;
+  document.getElementById('modalCurrentStart').textContent = entry.start_time;
+
+  // 默认延迟到当前 start_time + 1 小时
+  const parts = entry.start_time.match(/(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})/);
+  if (parts) {
+    const d = new Date(parseInt(parts[1]), parseInt(parts[2]) - 1, parseInt(parts[3]),
+                       parseInt(parts[4]), parseInt(parts[5]));
+    d.setHours(d.getHours() + 1);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    document.getElementById('modalDelayTo').value = yyyy + '/' + mm + '/' + dd + ' ' + hh + ':' + min;
+  } else {
+    document.getElementById('modalDelayTo').value = entry.start_time;
+  }
+
+  document.getElementById('delayModalOverlay').classList.add('active');
+  setTimeout(() => document.getElementById('modalDelayTo').focus(), 100);
+  } catch (e) {
+    console.error('[openDelayModal] ERROR:', e.message, e.stack);
+    showToast('openDelayModal错误: ' + e.message, 'error');
+  }
+}
+
+function closeDelayModal() {
+  document.getElementById('delayModalOverlay').classList.remove('active');
+  modalEntry = null;
+}
+
+function quickDelay(hours) {
+  const input = document.getElementById('modalDelayTo');
+  const val = input.value.trim();
+  const parts = val.match(/(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})/);
+  if (parts) {
+    const d = new Date(parseInt(parts[1]), parseInt(parts[2]) - 1, parseInt(parts[3]),
+                       parseInt(parts[4]), parseInt(parts[5]));
+    d.setHours(d.getHours() + hours);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    input.value = yyyy + '/' + mm + '/' + dd + ' ' + hh + ':' + min;
+  }
+}
+
+async function confirmDelay() {
+  console.log('[confirmDelay] called, modalEntry:', modalEntry ? modalEntry.lot_name : 'null');
+  if (!modalEntry) return;
+  const delayTo = document.getElementById('modalDelayTo').value.trim();
+  if (!delayTo) {
+    showToast('请输入延迟时间', 'error');
+    return;
+  }
+  // 校验格式
+  if (!delayTo.match(/^\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}$/)) {
+    showToast('格式错误，请使用 yyyy/mm/dd HH:MM', 'error');
+    return;
+  }
+
+  // 先保存值再关闭模态框（closeDelayModal 会清空 modalEntry）
+  const entryLotName = modalEntry.lot_name;
+  const entryStepName = modalEntry.step_name;
+  closeDelayModal();
+
+  // 添加调整到内存
+  try {
+    const res = await fetch('/api/manual-adjust', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lot_name: entryLotName,
+        step_name: entryStepName,
+        delay_to: delayTo,
+        mode: document.getElementById('modalMode').value,
+      })
+    });
+    const data = await res.json();
+    if (data.error) {
+      showToast('添加调整失败: ' + data.error, 'error');
+      return;
+    }
+    currentAdjusts = data.manual_adjusts || [];
+    renderAdjustsTable();
+    showToast('已添加调整规则。添加完成后请点击「重新生成」进行完整重排', 'info');
+  } catch (e) {
+    console.error('[confirmDelay]', e);
+    showToast('调整失败: ' + e.message, 'error');
+  }
+}
+
+async function deleteAdjust(btn) {
+  const lotName = btn.dataset.lot;
+  const stepName = btn.dataset.step;
+  const delayTo = btn.dataset.delay;
+  const mode = btn.dataset.mode;
+  if (!lotName) return;
+  const desc = (stepName ? ('步骤 ' + stepName) : '整个 Lot') + '（' + (mode === 'pin' ? '锁定' : '最早') + ' ' + delayTo + '）';
+  if (!confirm('确定删除该调整规则吗？\n' + lotName + ' | ' + desc)) return;
+  try {
+    const res = await fetch('/api/manual-adjust', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lot_name: lotName,
+        step_name: stepName || '',
+        delay_to: delayTo || '',
+        mode: mode || '',
+      })
+    });
+    const data = await res.json();
+    if (data.error) {
+      showToast('删除失败: ' + data.error, 'error');
+      return;
+    }
+    if (data.removed === 0) {
+      showToast('未找到匹配的规则（可能已被删除）', 'info');
+    } else {
+      currentAdjusts = data.manual_adjusts || [];
+      renderAdjustsTable();
+      showToast('已删除 ' + data.removed + ' 条调整规则。请点击「重新生成」进行完整重排', 'info');
+    }
+  } catch (e) {
+    console.error('[deleteAdjust]', e);
+    showToast('删除失败: ' + e.message, 'error');
+  }
+}
+
+async function saveAdjusts() {
+  try {
+    const res = await fetch('/api/manual-adjust/save', { method: 'POST' });
+    const data = await res.json();
+    if (data.error) {
+      showToast('保存失败: ' + data.error, 'error');
+      return;
+    }
+    showToast('已保存 ' + data.count + ' 条调整规则到文件', 'success');
+  } catch (e) {
+    showToast('保存失败: ' + e.message, 'error');
+  }
+}
+
+async function reloadAdjusts() {
+  try {
+    const res = await fetch('/api/manual-adjust-reload', { method: 'POST' });
+    const data = await res.json();
+    if (data.error) {
+      showToast('加载失败: ' + data.error, 'error');
+      return;
+    }
+    currentAdjusts = data.manual_adjusts || [];
+    renderAdjustsTable();
+    showToast('已从文件加载 ' + currentAdjusts.length + ' 条调整规则', 'info');
+  } catch (e) {
+    showToast('加载失败: ' + e.message, 'error');
+  }
+}
+
+// 点击模态框遮罩关闭
+document.getElementById('delayModalOverlay').addEventListener('click', function(e) {
+  if (e.target === this) closeDelayModal();
+});
+
+// 键盘快捷键
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeDelayModal();
+});
+
+// ── 多选下拉复选框 ──
+function toggleDropdown(dropdownId) {
+  const panel = document.getElementById(dropdownId + 'Panel');
+  const isOpen = panel.classList.contains('open');
+  // 关闭所有已打开的
+  document.querySelectorAll('.multi-select-panel.open').forEach(p => p.classList.remove('open'));
+  if (!isOpen) {
+    panel.classList.add('open');
+    const searchInput = panel.querySelector('.multi-select-search');
+    if (searchInput) { searchInput.value = ''; filterDropdown(dropdownId, ''); }
+  }
+}
+
+function filterDropdown(dropdownId, query) {
+  const list = document.getElementById(dropdownId + 'List');
+  const labels = list.querySelectorAll('label');
+  const q = query.toLowerCase();
+  labels.forEach(l => {
+    l.classList.toggle('hidden', q && !l.textContent.toLowerCase().includes(q));
+  });
+}
+
+function dropdownSelectAll(dropdownId) {
+  const list = document.getElementById(dropdownId + 'List');
+  list.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = true; });
+  updateDropdownText(dropdownId);
+}
+
+function dropdownDeselectAll(dropdownId) {
+  const list = document.getElementById(dropdownId + 'List');
+  list.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = false; });
+  updateDropdownText(dropdownId);
+}
+
+function updateDropdownText(dropdownId) {
+  const list = document.getElementById(dropdownId + 'List');
+  const checked = list.querySelectorAll('input[type="checkbox"]:checked');
+  const total = list.querySelectorAll('input[type="checkbox"]');
+  const textId = dropdownId === 'lotDropdown' ? 'lotSelectedText' : 'eqpSelectedText';
+  const textEl = document.getElementById(textId);
+  if (checked.length === 0) {
+    textEl.textContent = '未选择';
+  } else if (checked.length === total.length) {
+    textEl.textContent = '全部' + (dropdownId === 'lotDropdown' ? ' Lot' : '设备');
+  } else {
+    textEl.textContent = '已选 ' + checked.length + '/' + total.length;
+  }
+}
+
+// 点击外部关闭下拉
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.multi-select-dropdown')) {
+    document.querySelectorAll('.multi-select-panel.open').forEach(p => p.classList.remove('open'));
+  }
+});
+
+// checkbox 变化时更新文字
+document.addEventListener('change', function(e) {
+  if (e.target.matches('#lotDropdownList input[type="checkbox"]')) {
+    updateDropdownText('lotDropdown');
+  } else if (e.target.matches('#eqpDropdownList input[type="checkbox"]')) {
+    updateDropdownText('eqpDropdown');
+  }
+});
+
+async function showLotGantt() {
+  const container = document.getElementById('lotGanttContainer');
+  container.innerHTML = '<div class="loading"><span class="spinner"></span>正在生成甘特图...</div>';
+
+  const timeStart = document.getElementById('lotTimeStart').value.trim();
+  const timeEnd = document.getElementById('lotTimeEnd').value.trim();
+  const lotNames = [];
+  document.querySelectorAll('#lotDropdownList .lot-cb:checked').forEach(cb => { lotNames.push(cb.value); });
+
+  try {
+    const res = await fetch('/api/generate-gantt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'lot',
+        time_start: timeStart,
+        time_end: timeEnd,
+        lot_names: lotNames,
+      }),
+    });
+    const data = await res.json();
+    if (data.error) {
+      showToast('生成失败: ' + data.error, 'error');
+      container.innerHTML = '<div class="placeholder">生成失败: ' + data.error + '</div>';
+      return;
+    }
+    container.innerHTML = '<img src="' + data.image + '" alt="Lot Gantt Chart" style="max-width:100%;">';
+  } catch (e) {
+    console.error('[showLotGantt]', e);
+    showToast('甘特图生成失败: ' + e.message, 'error');
+    container.innerHTML = '<div class="placeholder">生成失败，请重试</div>';
+  }
+}
+
+async function showEqpGantt() {
+  const container = document.getElementById('eqpGanttContainer');
+  container.innerHTML = '<div class="loading"><span class="spinner"></span>正在生成甘特图...</div>';
+
+  const timeStart = document.getElementById('eqpTimeStart').value.trim();
+  const timeEnd = document.getElementById('eqpTimeEnd').value.trim();
+  const eqpIds = [];
+  document.querySelectorAll('#eqpDropdownList .eqp-cb:checked').forEach(cb => { eqpIds.push(cb.value); });
+
+  try {
+    const res = await fetch('/api/generate-gantt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'eqp',
+        time_start: timeStart,
+        time_end: timeEnd,
+        eqp_ids: eqpIds,
+      }),
+    });
+    const data = await res.json();
+    if (data.error) {
+      showToast('生成失败: ' + data.error, 'error');
+      container.innerHTML = '<div class="placeholder">生成失败: ' + data.error + '</div>';
+      return;
+    }
+    container.innerHTML = '<img src="' + data.image + '" alt="Equipment Gantt Chart" style="max-width:100%;">';
+  } catch (e) {
+    console.error('[showEqpGantt]', e);
+    showToast('甘特图生成失败: ' + e.message, 'error');
+    container.innerHTML = '<div class="placeholder">生成失败，请重试</div>';
+  }
+}
+
+function downloadExcel() {
+  if (!reportData || !reportData.excel_url) {
+    showToast('请先生成报表', 'error');
+    return;
+  }
+  window.open(reportData.excel_url, '_blank');
+}
+
+async function downloadGantt(type) {
+  const timeStart = type === 'lot'
+    ? document.getElementById('lotTimeStart').value.trim()
+    : document.getElementById('eqpTimeStart').value.trim();
+  const timeEnd = type === 'lot'
+    ? document.getElementById('lotTimeEnd').value.trim()
+    : document.getElementById('eqpTimeEnd').value.trim();
+
+  const body = { type, time_start: timeStart, time_end: timeEnd };
+
+  if (type === 'lot') {
+    const lotNames = [];
+    document.querySelectorAll('#lotDropdownList .lot-cb:checked').forEach(cb => lotNames.push(cb.value));
+    body.lot_names = lotNames;
+  } else {
+    const eqpIds = [];
+    document.querySelectorAll('#eqpDropdownList .eqp-cb:checked').forEach(cb => eqpIds.push(cb.value));
+    body.eqp_ids = eqpIds;
+  }
+
+  try {
+    const res = await fetch('/api/generate-gantt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.error) {
+      showToast('下载失败: ' + data.error, 'error');
+      return;
+    }
+    const link = document.createElement('a');
+    link.href = data.image;
+    link.download = (type === 'lot' ? 'lot_gantt' : 'eqp_gantt') + '.png';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('甘特图下载成功', 'success');
+  } catch (e) {
+    console.error('[downloadGantt]', e);
+    showToast('下载失败: ' + e.message, 'error');
+  }
+}
+
+// 页面加载时刷新快照列表
+loadSnapshots();
+
+function h(str) {
+  if (str == null) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// 退出程序：关闭本地服务并结束进程（关闭浏览器标签页不会结束后台进程）
+document.getElementById('shutdownBtn').addEventListener('click', async () => {
+  if (!confirm('确定要退出排程调度系统吗？\n退出后需重新运行程序才能使用。')) return;
+  try {
+    await fetch('/api/shutdown', { method: 'POST' });
+    showToast('程序正在退出…', 'success');
+    setTimeout(() => { window.close(); }, 800);
+  } catch (e) {
+    showToast('退出失败：' + e, 'error');
+  }
+});
+
+// 浏览器关闭自动退出：用 Web Worker 定期发送心跳（后台标签页定时器不被浏览器节流）。
+// 关闭所有标签页/整个浏览器后心跳停止，后端看门狗会自动退出程序，避免后台残留进程。
+(function () {
+  try {
+    var origin = location.origin;
+    var src = 'setInterval(function(){try{fetch("' + origin + '/api/heartbeat",{method:"POST"})}catch(e){}},3000);';
+    new Worker(URL.createObjectURL(new Blob([src], { type: 'application/javascript' })));
+  } catch (e) { /* 不支持时忽略，仍可用右上角“退出程序”按钮 */ }
+})();
+</script>
+
+</body></html>
