@@ -3319,26 +3319,43 @@ def _coarse_earliest_anchors(
                 # 若把整条链都压成背靠背，会把链首（BAKE）人为推迟十多个小时、制造设备
                 # 空窗并拖累其它 lot 的就绪调度（实测 PC2 的 UF-BAKE 被从 08/18 12:58
                 # 推到 08/19 04:31，导致 PC1 的 UF-CURE 被饿死超 Q 813min）。
-                _tight_spans = []
-                for _q in (qtimes or []):
-                    if _q.product_name != lot.product_name:
+                # ---- 预编译：链内 Q-time 段（一次扫描，同时服务"紧段判定"与"预算守卫"）----
+                # 每个 qtime 规则在链内定位 start/end 相对索引并解析起/终报告时刻修正
+                # （start/end_mod：track in=起点，track out=终点）。一份列表供：
+                #   a) _pinnable：反向压实只作用于紧 Q-time 段内的步骤
+                #      （max_duration<=TIGHT_CHAIN_THRESHOLD，如 UF 链 PLASMA→DISPENSE
+                #       240 / DISPENSE→CURE 240；BAKE→DISPENSE 1440 为宽松段不压实）。
+                #   b) 通用 Q 段预算守卫：对任意跨度/任一 Q 模型的超预算做链内后移兜底，
+                #      避免反向压实或手动钉晚把某步拉晚、使其前"报告步骤"撑破 Q。
+                _qsegs = []
+                for _q0 in (qtimes or []):
+                    if _q0.product_name != lot.product_name or _q0.max_duration is None:
                         continue
-                    if _q.max_duration is None or _q.max_duration > TIGHT_CHAIN_THRESHOLD:
-                        continue
-                    _qs = None
-                    _qe = None
+                    _qa = _qb = None
                     for _j in range(n):
                         _sn = lot_flow[cur_idx + s_rel + _j].step_name
-                        if _sn == _q.start_step and _qs is None:
-                            _qs = _j
-                        if _sn == _q.end_step:
-                            _qe = _j
-                    if _qs is not None and _qe is not None and _qs < _qe:
-                        _tight_spans.append((_qs, _qe))
+                        if _sn == _q0.start_step and _qa is None:
+                            _qa = _j
+                        if _sn == _q0.end_step:
+                            _qb = _j
+                    if _qa is None or _qb is None or _qa >= _qb:
+                        continue
+                    _budget = float(_q0.max_duration)
+                    _sm = (_q0.start_mod or "track in").strip()
+                    _em = (_q0.end_mod or "track out").strip()
+                    _qsegs.append({
+                        "start_j": _qa,
+                        "end_j": _qb,
+                        "a_off": cts[_qa] if _sm == "track out" else 0.0,
+                        "b_off": cts[_qb] if _em == "track out" else 0.0,
+                        "budget": _budget,
+                        "is_tight": _budget <= TIGHT_CHAIN_THRESHOLD,
+                    })
+                _qsegs.sort(key=lambda x: x["end_j"], reverse=True)  # end 相对索引降序
 
                 def _pinnable(_k: int) -> bool:
                     # 步骤 _k 是否处于某条紧 Q-time 规则覆盖区间内（start<=k<end）
-                    return any(_s <= _k < _e for _s, _e in _tight_spans)
+                    return any(s["is_tight"] and s["start_j"] <= _k < s["end_j"] for s in _qsegs)
 
                 pos = list(lst[s_rel:e_rel + 1])
                 # 1) 正向顺延：保证链内有序
@@ -3362,42 +3379,16 @@ def _coarse_earliest_anchors(
                         bk = pos[k + 1] - timedelta(minutes=cts[k] + waits[k])
                         if bk > pos[k]:
                             pos[k] = bk
-                # 3.5) Q 段预算守卫（通用版）：对链内**任意跨度**的 Q-time 规则，
-                #    若实际用时（q_end - q_start）超过预算，则把链内更早的
-                #    "报告步骤" pos[a] 整体后移以满足预算。
-                #    兼容全部 start_mod / end_mod 组合（与 validation 一致）：
-                #      start: track in → q_start=step 起点; track out → q_start=step 终点
-                #      end:   track in → q_end=step 起点;   track out → q_end=step 终点
-                #    覆盖相邻对（PLASMA→DISPENSE 240 / DISPENSE→CURE 240）与非相邻跨步
-                #    （BAKE→DISPENSE 1440）。反向压实/手动钉晚都可能把某步拉晚、而其前
-                #    的"报告步骤"保持早锚点，从而撑破这些段；这里把更早者整体后移。
-                #    按 end 相对索引降序处理：先收缩靠后的段、再收缩靠前的段，位移向
-                #    链首自然级联。仅在真实超预算时触发，位移受预算界约束，不会雪崩。
-                #    q_end - q_start = pos[b]+_b_off - (pos[a]+_a_off) <= budget
-                #    => pos[a] >= pos[b] + _b_off - _a_off - budget
-                _qsegs = []
-                for _q0 in (qtimes or []):
-                    if _q0.product_name != lot.product_name or _q0.max_duration is None:
-                        continue
-                    _qa = _qb = None
-                    for _j in range(n):
-                        _sn = lot_flow[cur_idx + s_rel + _j].step_name
-                        if _sn == _q0.start_step and _qa is None:
-                            _qa = _j
-                        if _sn == _q0.end_step:
-                            _qb = _j
-                    if _qa is None or _qb is None or _qa >= _qb:
-                        continue
-                    _sm = (_q0.start_mod or "track in").strip()
-                    _em = (_q0.end_mod or "track out").strip()
-                    _a_off = cts[_qa] if _sm == "track out" else 0.0
-                    _b_off = cts[_qb] if _em == "track out" else 0.0
-                    _qsegs.append((_qb, _qa, _a_off, _b_off, float(_q0.max_duration)))
-                _qsegs.sort(key=lambda x: x[0], reverse=True)  # end 相对索引降序
-                for _b, _a, _a_off, _b_off, _budget in _qsegs:
-                    _lo = pos[_b] + timedelta(minutes=_b_off - _a_off - _budget)
-                    if pos[_a] < _lo:
-                        pos[_a] = _lo
+                # 3.5) 通用 Q 段预算守卫：复用上面一次预编译的 _qsegs，对每段
+                #    若实际用时（q_end - q_start）超预算，把其前序"报告步骤"
+                #    pos[start_j] 整体后移以满足预算。仅真实超预算时触发，位移受
+                #    预算界约束；按 end 索引降序处理，段间位移向链首自然级联，不雪崩。
+                #    q_end - q_start = pos[b]+b_off - (pos[a]+a_off) <= budget
+                #    => pos[a] >= pos[b] + b_off - a_off - budget
+                for _s in _qsegs:
+                    _lo = pos[_s["end_j"]] + timedelta(minutes=_s["b_off"] - _s["a_off"] - _s["budget"])
+                    if pos[_s["start_j"]] < _lo:
+                        pos[_s["start_j"]] = _lo
                 # 4) 再次正向顺延：被压实/后移步骤可能顶动其后步骤
                 for k in range(1, n):
                     need = pos[k - 1] + timedelta(minutes=cts[k - 1] + waits[k - 1])
