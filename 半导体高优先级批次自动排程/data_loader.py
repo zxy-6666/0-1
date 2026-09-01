@@ -1,4 +1,5 @@
 """数据加载与校验"""
+import logging
 import os
 import pandas as pd
 from datetime import datetime
@@ -6,6 +7,8 @@ from typing import Optional
 from models import Lot, LotConstraint, LeadPair, EqpConstraint, FlowStep, StepCT, QTimeConstraint, SpecialLotStep, StepTimeWindow, ShiftChangeTime, ShiftConfig, ManualAdjust, SpecialEqp
 
 DATETIME_FORMAT = "%Y/%m/%d %H:%M"
+
+logger = logging.getLogger(__name__)
 
 # 由 load_lot_constraints 收集的 lead 关系（每次加载时清除并重建）。
 # lead 是"lot2.step2 尾随 lot1.step1"的关系声明，见 LeadPair 与 lead 设计文档。
@@ -371,10 +374,10 @@ def auto_repair_step_ct(flows: list[FlowStep], step_cts: list[StepCT],
     if not missing_steps:
         return step_cts
 
-    print(f"[data_loader.auto_repair_step_ct] 检测到 step_ct.csv 缺失 {len(missing_steps)} 个步骤，")
-    print("    （例如用户刚改完 flow.csv 但没保存 step_ct.csv）自动生成 CT 并回写：")
+    logger.info("[data_loader.auto_repair_step_ct] 检测到 step_ct.csv 缺失 %d 个步骤，", len(missing_steps))
+    logger.info("    （例如用户刚改完 flow.csv 但没保存 step_ct.csv）自动生成 CT 并回写：")
     for s in missing_steps:
-        print(f"      - {s.product_name} / {s.step_name} ({s.step_number})")
+        logger.info("      - %s / %s (%s)", s.product_name, s.step_name, s.step_number)
 
     # 收集同 product 同 stage 的锚点(3,8,13) -> ct
     anchors_by_group: dict[tuple[str, str], dict[int, list[float]]] = defaultdict(lambda: defaultdict(list))
@@ -468,9 +471,9 @@ def auto_repair_step_ct(flows: list[FlowStep], step_cts: list[StepCT],
             cols = list(records[0].keys())
             df = pd.DataFrame(records, columns=cols)
             df.to_csv(step_ct_filepath, index=False, sep="\t")
-            print(f"    ✅ 已自动回写 step_ct.csv（新增 {len(new_rows)} 行，原有行保持不变），下次无需手动再保存")
+            logger.info("    ✅ 已自动回写 step_ct.csv（新增 %d 行，原有行保持不变），下次无需手动再保存", len(new_rows))
         except (PermissionError, OSError) as e:
-            print(f"    ⚠ 回写 {step_ct_filepath} 失败（{e}），本次仅内存补全")
+            logger.info("    ⚠ 回写 %s 失败（%s），本次仅内存补全", step_ct_filepath, e)
 
     return new_cts
 

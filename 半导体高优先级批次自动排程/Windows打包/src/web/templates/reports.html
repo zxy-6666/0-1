@@ -390,6 +390,11 @@ tr.adjusted:hover td { background: #ffe7ba !important; }
     </table>
     </div>
   </div>
+
+  <div class="card hidden" id="schedWarnCard">
+    <h2>排程告警（跨班次 / 合理性）</h2>
+    <ul id="schedWarnList" class="warn-list" style="color:#fa8c16;margin:0;padding-left:20px;"></ul>
+  </div>
 </div>
 
 <!-- 延迟设置模态框 -->
@@ -920,6 +925,17 @@ function renderReport(data) {
     ).join('');
   } else {
     document.getElementById('qtimeCard').classList.add('hidden');
+  }
+
+  // 排程告警（跨班次风险 / 排程合理性）：终端已静音，改为在报表页展示
+  const schedWarns = data.schedule_warnings || [];
+  const schedWarnCard = document.getElementById('schedWarnCard');
+  const schedWarnList = document.getElementById('schedWarnList');
+  if (schedWarns.length > 0) {
+    schedWarnList.innerHTML = schedWarns.map(w => '<li>' + h(w) + '</li>').join('');
+    schedWarnCard.classList.remove('hidden');
+  } else {
+    schedWarnCard.classList.add('hidden');
   }
   } catch (e) {
     console.error('[renderReport] ERROR:', e.message, e.stack);

@@ -20,6 +20,11 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# 业务告警（跨班次风险 / 排程合理性 / 无法满足约束跳过）默认只写入 out_warnings
+# 供前端展示，不再直接打印终端——避免多 seed 优化（默认 40 轮）时每轮重复刷屏。
+# 需要恢复终端输出时：设置环境变量 SCHED_WARN=1，或调用方传 verbose=True。
+_WARN_ENV = os.environ.get("SCHED_WARN") == "1"
+
 # 最近一次粗排程的"合理性审计"结果，供 schedule() 生成智能告警：
 #   cycle_lots   —— lot_constraints 中互相引用的环内 lot 集合
 #   fallback_used——不动点迭代 60 轮未收敛、已用"自然锚点回退"打破雪崩
@@ -4330,7 +4335,8 @@ def schedule(
     try:
         _cs = _detect_qtime_cross_shift(_best_le, qtimes, shift_times)
         for _w in _cs:
-            logger.warning("[跨班次风险] %s", _w)
+            if verbose or _WARN_ENV:
+                logger.warning("[跨班次风险] %s", _w)
         if out_warnings is not None:
             out_warnings.extend(_cs)
     except Exception:
@@ -5358,7 +5364,8 @@ def _run_schedule_pass(
             step.step_name, max_iterations=resolve_max_iterations)
 
         if start_time == datetime.max:
-            logger.warning("Lot %s step %s 无法满足约束，跳过", lot.lot_name, step.step_name)
+            if verbose or _WARN_ENV:
+                logger.warning("Lot %s step %s 无法满足约束，跳过", lot.lot_name, step.step_name)
             continue
 
         end_time = start_time + timedelta(minutes=ct)
@@ -5436,7 +5443,8 @@ def _run_schedule_pass(
             lot_entries, lots, flow_map, ct_lookup, priority_wait_map or {},
             anchor_audit=dict(_anchor_audit))
         for _w in _warns:
-            logger.warning("[排程合理性] %s", _w)
+            if verbose or _WARN_ENV:
+                logger.warning("[排程合理性] %s", _w)
         if out_warnings is not None:
             out_warnings.extend(_warns)
     except Exception as _e:  # 检测失败不影响排程结果
