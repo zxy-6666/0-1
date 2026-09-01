@@ -1097,9 +1097,16 @@ def test_41_manual_pin_boundary_robust():
                          delay_to=_dt(2026, 8, 20, 10, 10))]
     le2, ee2, qa2, meta2 = run_schedule_optimized_manual(data, late, max_iterations=30, seed=1)
     if meta2.get("warning") is not None:
-        # 结构性不可行：应返回罚分最轻的解，且必须记录了违规明细
-        if not meta2.get("violations"):
-            return ["warning 分支未记录任何违规"]
+        # 结构性不可行（无合法解）：应返回罚分最轻的解，且必须记录了违规明细
+        if "未找到完全合法解" in str(meta2.get("warning")):
+            if not meta2.get("violations"):
+                return ["warning 分支未记录任何违规"]
+        else:
+            # 合法但余量未达标（统一余量计量下的余量不足告警）：
+            # 告警必须落到 schedule_warnings 并含具体余量不足的链
+            swarns = meta2.get("schedule_warnings") or []
+            if not any("余量" in str(w) and "<安全" in str(w) for w in swarns):
+                return ["余量不足告警缺少明细"]
     return []
 
 
