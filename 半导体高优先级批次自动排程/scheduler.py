@@ -4444,7 +4444,7 @@ def _prev_step_name(flows: list, product_name: str, step_name: str) -> Optional[
 
 def _fix_qtime_overflow_pull_chain_start(le, ee, qa, lots, flows, qtimes,
                                          shift_times=None) -> int:
-    """超 Q 后修复（尽力而为，第 15 轮新增）。
+    """超 Q 后修复（尽力而为）。
 
     场景：长 Q-time 段的链首步骤（如 real1 的 BAKE）被自然排得很早，端步骤
     （如 DISPENSE）随后被手动延后 / 设备挤兑推晚，导致整段间隔超过 Q 预算
@@ -4453,11 +4453,17 @@ def _fix_qtime_overflow_pull_chain_start(le, ee, qa, lots, flows, qtimes,
 
     策略（只后移、不前置，失败即放弃保持原样）：
       1) 对每个"超时" Q-time 告警，定位链首 entry A 与端步骤 entry B；
-      2) 目标：A 的参考时刻（track out 用 end / track in 用 start）≤ B 参考 - 预算；
-      3) 用设备占用区间找 ≥ (A.start + 需后移量) 的最早可用槽，且新参考时刻不越过上限；
-      4) 校验上一步约束（后移不得早于上一步完成）与上游 Q（A 作为 end 步骤的链不得被撑爆）；
-      5) 通过则同步更新 lot 维度与设备维度 entry，并把该告警标记为 OK；
-      6) 全部尝试后统一用 validate_schedule 复查：若违规数比修复前增加则整体回滚。
+      2) 目标：A 的参考时刻 ≥ B 参考 - 预算。参考点规则：
+         start_mod 决定 A 侧（track out=结束 / track in=开始），end_mod 决定 B 侧；
+      3) 用设备占用区间找 ≥ (A.start + 需后移量) 的最早可用槽，保序（不越过 B）；
+      4) 上游 Q 保护：A 后移不得撑爆 (prev→A) 段预算（否则放弃，见已知限制）；
+      5) 通过则同步更新 lot/设备维度 entry，告警标记 OK；
+      6) 全部尝试后统一 validate 复查：违规数比修复前增加则整体回滚。
+
+    已知限制（链式后移尝试结论）：PC1 型场景（超 Q 段上游是紧链且链首设备被其他
+    Lot 排他占用）无法单层后移——尝试过"链式传播逐层后移"（第 16 轮实验）会破坏
+    real1/PC2 的修复（整链精确平移撞设备占用、参考点错位），已回退单层。此类场景
+    属上游紧链 + 设备竞争的真实约束冲突，保留告警更安全。
     """
     if not qa or not qtimes:
         return 0
@@ -4491,13 +4497,13 @@ def _fix_qtime_overflow_pull_chain_start(le, ee, qa, lots, flows, qtimes,
             if A is None or B is None or A.eqp_id == "-":
                 continue
             budget = float(q.max_duration)
-            end_mod = (q.end_mod or "track out").strip()
-            # 端步骤参考时刻（track in=开始 / track out=结束）
+            start_mod = (q.start_mod or "track in").strip()   # A 侧参考
+            end_mod = (q.end_mod or "track out").strip()      # B 侧参考
             b_ref = B.start_time if end_mod == "track in" else B.end_time
             # 链首参考时刻的合规下限：间隔 = b_ref - a_ref，要求 ≤ 预算
             # → a_ref ≥ b_ref - 预算。a_ref 越小（链首排得越早）间隔越大越易超时。
             a_ref_min = b_ref - timedelta(minutes=budget)
-            a_ref_now = A.end_time if end_mod == "track out" else A.start_time
+            a_ref_now = A.end_time if start_mod == "track out" else A.start_time
             if a_ref_now >= a_ref_min:
                 continue  # 链首已够晚，间隔合规
             # 需后移分钟数（+1min 避免浮点误差刚好卡线）
@@ -4513,21 +4519,21 @@ def _fix_qtime_overflow_pull_chain_start(le, ee, qa, lots, flows, qtimes,
                    if e2.eqp_id == A.eqp_id
                    and not (e2.lot_name == A.lot_name and e2.step_name == A.step_name)]
             new_start = _find_earliest_slot(occ, lo, timedelta(minutes=A.ct))
-            # 保序：链首后移不得越过端步骤（A 排得越晚间隔越短，方向天然合规）
-            if end_mod == "track out":
-                if new_start >= B.start_time - timedelta(minutes=A.ct):
-                    continue
-            else:
-                if new_start >= B.start_time:
-                    continue
+            # 保序：链首后移不得越过端步骤
+            if new_start + timedelta(minutes=A.ct) > B.start_time:
+                continue
             # 上游 Q 检查：A 作为 end 步骤（规则 prev_step→ss），移动不得撑爆上游预算
             if prev_e is not None and prev_step:
                 upq = qrule_by_key.get((prod, prev_step, ss))
                 if upq is not None and upq.max_duration:
+                    up_start_mod = (upq.start_mod or "track in").strip()
                     up_end_mod = (upq.end_mod or "track out").strip()
-                    up_ref = new_start + timedelta(minutes=A.ct) if up_end_mod == "track out" else new_start
-                    if (up_ref - prev_e.end_time).total_seconds() / 60.0 > float(upq.max_duration):
-                        continue
+                    up_ref = (new_start + timedelta(minutes=A.ct)
+                              if up_end_mod == "track out" else new_start)
+                    prev_ref = (prev_e.end_time
+                                if up_start_mod == "track out" else prev_e.start_time)
+                    if (up_ref - prev_ref).total_seconds() / 60.0 > float(upq.max_duration):
+                        continue  # 会撑爆上游（PC1 型），保守放弃
             # 应用移动
             old_start, old_end = A.start_time, A.end_time
             A.start_time = new_start
