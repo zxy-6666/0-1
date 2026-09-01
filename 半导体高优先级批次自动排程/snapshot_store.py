@@ -102,6 +102,7 @@ def _summary(d: dict) -> dict:
     resp = d.get("response") or {}
     stats = resp.get("stats") or {}
     lot_summaries = resp.get("lot_summaries") or {}
+    ve = resp.get("validation_errors")
     return {
         "snapshot_id": d.get("snapshot_id", ""),
         "created_at": d.get("created_at", ""),
@@ -110,6 +111,7 @@ def _summary(d: dict) -> dict:
         "min_qtime_margin": stats.get("min_qtime_margin"),
         "qtime_alerts": stats.get("qtime_alerts", 0),
         "validation_errors": stats.get("validation_errors", 0),
+        "validation_error_list": (ve if isinstance(ve, list) else [])[:20],
         "valid_iterations": stats.get("valid_iterations", 0),
         "total_iterations": stats.get("total_iterations", 0),
         "lot_entries": stats.get("lot_entries", 0),

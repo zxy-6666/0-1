@@ -395,6 +395,12 @@ tr.adjusted:hover td { background: #ffe7ba !important; }
     <h2>排程告警（跨班次 / 合理性）</h2>
     <ul id="schedWarnList" class="warn-list" style="color:#fa8c16;margin:0;padding-left:20px;"></ul>
   </div>
+
+  <!-- 校验错误明细 -->
+  <div class="card hidden" id="validationCard">
+    <h2>校验错误（未通过约束）</h2>
+    <ul id="validationErrorList" style="color:#ff4d4f;margin:0;padding-left:20px;"></ul>
+  </div>
 </div>
 
 <!-- 延迟设置模态框 -->
@@ -604,16 +610,20 @@ function renderSnapTable(snaps) {
     if (b.score == null) return -1;
     return a.score - b.score;
   });
-  tbody.innerHTML = sorted.map(s => {
+  tbody.innerHTML = sorted.map((s, i) => {
     const isBest = s.score != null && bestScore != null && Math.abs(s.score - bestScore) < 1e-6;
     const idShort = s.snapshot_id.length > 24 ? s.snapshot_id.substring(0, 24) + '…' : s.snapshot_id;
+    const errList = (Array.isArray(s.validation_error_list) && s.validation_error_list.length) ? s.validation_error_list : null;
+    const errRowId = 'snapErr-' + i;
     return '<tr>' +
       '<td><strong>' + h(idShort) + '</strong>' + (isBest ? ' <span class="badge badge-ok">最优</span>' : '') + '</td>' +
       '<td>' + h(s.seed) + '</td>' +
       '<td style="' + (isBest ? 'color:#52c41a;font-weight:600;' : '') + '">' + (s.score != null ? Number(s.score).toFixed(1) : '<em style="color:#ff4d4f;">无合法解</em>') + '</td>' +
       '<td>' + (s.min_qtime_margin != null ? Number(s.min_qtime_margin).toFixed(1) : '-') + '</td>' +
       '<td>' + (s.qtime_alerts > 0 ? '<span class="badge badge-error">' + s.qtime_alerts + '</span>' : '<span class="badge badge-ok">0</span>') + '</td>' +
-      '<td>' + (s.validation_errors > 0 ? '<span class="badge badge-warn">' + s.validation_errors + '</span>' : '<span class="badge badge-ok">0</span>') + '</td>' +
+      '<td>' + (s.validation_errors > 0
+        ? '<span class="badge badge-warn" style="cursor:pointer;" onclick="toggleSnapErrors(' + i + ')" title="点击展开校验错误明细">' + s.validation_errors + '</span>'
+        : '<span class="badge badge-ok">0</span>') + '</td>' +
       '<td>' + s.valid_iterations + '/' + s.total_iterations + '</td>' +
       '<td>' + h(s.created_at) + '</td>' +
       '<td>' +
@@ -621,8 +631,14 @@ function renderSnapTable(snaps) {
         '<button class="btn-sm" onclick="downloadSnapshotExcel(\'' + h(s.snapshot_id) + '\')" style="margin-right:4px;">Excel</button>' +
         '<button class="btn-sm del-btn" onclick="deleteSnapshot(\'' + h(s.snapshot_id) + '\')">删除</button>' +
       '</td>' +
-      '</tr>';
+      '</tr>' +
+      (errList ? '<tr id="' + errRowId + '" style="display:none;background:#fff7f7;"><td colspan="9"><ul style="margin:6px 0;padding-left:20px;color:#ff4d4f;">' + errList.map(e => '<li>' + h(e) + '</li>').join('') + '</ul></td></tr>' : '');
   }).join('');
+}
+
+function toggleSnapErrors(i) {
+  const row = document.getElementById('snapErr-' + i);
+  if (row) row.style.display = (row.style.display === 'none' || !row.style.display) ? '' : 'none';
 }
 
 async function viewSnapshot(id, notify) {
@@ -936,6 +952,17 @@ function renderReport(data) {
     schedWarnCard.classList.remove('hidden');
   } else {
     schedWarnCard.classList.add('hidden');
+  }
+
+  // 校验错误明细（Q-time 超时 / reference 违例 / 缺失步骤等具体原因）
+  const vErrors = data.validation_errors || [];
+  const validationCard = document.getElementById('validationCard');
+  const validationErrorList = document.getElementById('validationErrorList');
+  if (vErrors.length > 0) {
+    validationErrorList.innerHTML = vErrors.map(e => '<li>' + h(e) + '</li>').join('');
+    validationCard.classList.remove('hidden');
+  } else {
+    validationCard.classList.add('hidden');
   }
   } catch (e) {
     console.error('[renderReport] ERROR:', e.message, e.stack);
