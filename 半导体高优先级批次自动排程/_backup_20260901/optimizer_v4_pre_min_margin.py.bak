@@ -140,7 +140,6 @@ def schedule_optimized(
     # ---- 算法旋钮（None 使用调度器默认） ----
     tight_chain_threshold: int = None,
     qtight_safety_margin: float = None,   # 紧 Q-time 安全余量（百分比 0-100，默认 20%）
-    qtight_min_margin: float = None,      # 紧 Q-time 安全余量下限（分钟，默认 30）
     chain_wait_safety: int = None,
     cross_shift_avoid: bool = None,
     # ---- SA+Tabu 细调层（借鉴 meta_heuristic_before） ----
@@ -212,7 +211,6 @@ def schedule_optimized(
                 chain_placement=chain_placement,
                 tight_chain_threshold=tight_chain_threshold,
                 qtight_safety_margin=qtight_safety_margin,
-                qtight_min_margin=qtight_min_margin,
                 chain_wait_safety=chain_wait_safety,
                 cross_shift_avoid=cross_shift_avoid,
                 out_warnings=iter_warnings,
@@ -309,7 +307,6 @@ def schedule_optimized(
                     lot_order=lo, eqp_preferences=ep, chain_placement=ch,
                     tight_chain_threshold=tight_chain_threshold,
                     qtight_safety_margin=qtight_safety_margin,
-                    qtight_min_margin=qtight_min_margin,
                     chain_wait_safety=chain_wait_safety,
                     cross_shift_avoid=cross_shift_avoid)
             except Exception:
@@ -347,6 +344,7 @@ def schedule_optimized(
         cur_ch = best_meta.get("chain_placement", "compact")
 
         cur_obj_score = best_score   # 当前解分值：SA 退火基准（delta 与之比较）
+        cur_margin = best_margin
         best_ref_obj_score = best_score
         best_ref_margin = best_margin
         best_ref_le, best_ref_ee, best_ref_qa = best
@@ -361,6 +359,7 @@ def schedule_optimized(
         op_names = ["order_swap", "order_shuffle", "eqp_swap", "eqp_shuffle", "chain_toggle"]
         op_weights = {n: 1.0 / len(op_names) for n in op_names}
         op_contrib = {n: [] for n in op_names}
+        op_used = {n: 0 for n in op_names}
         accept_window: list[bool] = []
         _t_iters = 0
 
@@ -374,6 +373,7 @@ def schedule_optimized(
                 if r_roll <= _acc:
                     op = n
                     break
+            op_used[op] += 1
 
             # 生成邻域
             nb_lo = list(cur_lo)
@@ -410,6 +410,7 @@ def schedule_optimized(
                 nb_ch = "early" if cur_ch != "early" else "compact"
                 move_id = "chain_toggle"
                 op = "chain_toggle"
+                op_used[op] = op_used.get(op, 0) + 1
 
             is_tabu = move_id in tabu and tabu[move_id] > _t_iters
             res = _eval_solution(nb_lo, nb_ep, nb_ch)
@@ -449,6 +450,7 @@ def schedule_optimized(
                 cur_ep = nb_ep
                 cur_ch = nb_ch
                 cur_obj_score = nb_score
+                cur_margin = nb_margin
                 if move_id is not None:
                     tabu[move_id] = _t_iters + tabu_tenure
                 if improve:
@@ -491,6 +493,7 @@ def schedule_optimized(
 
             # 算子权重自适应
             if _t_iters % max(adapt_window, 1) == 0:
+                contrib_sum = 0.0
                 for n in op_names:
                     c = sum(op_contrib[n][-adapt_window:]) if op_contrib[n] else 0.0
                     op_weights[n] = c if c > 0 else 0.0
@@ -514,6 +517,7 @@ def schedule_optimized(
             best_meta = best_ref_meta
 
     if best is None or not best_valid:
+        warning = True
         if best is None:
             le, ee, qa = [], [], []
             err_list: list[str] = []
@@ -534,6 +538,7 @@ def schedule_optimized(
             "no_improve": no_improve,
         }
     else:
+        warning = False
         le, ee, qa = best
         meta = {
             "best_score": best_score,

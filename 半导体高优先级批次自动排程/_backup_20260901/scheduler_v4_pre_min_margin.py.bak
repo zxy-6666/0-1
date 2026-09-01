@@ -38,9 +38,6 @@ FAR_FUTURE = datetime(2099, 12, 31, 0, 0)
 SCHEDULE_WINDOW_DAYS = 365
 TIGHT_CHAIN_THRESHOLD = 240  # 紧链判定阈值（分钟）
 QTIGHT_SAFETY_MARGIN = 20.0  # 紧 Q-time 起点延迟的安全余量（百分比，按 Q 预算的 % 预留缓冲）
-QTIGHT_MIN_MARGIN = 30.0     # 紧 Q-time 安全余量下限（分钟）：实际余量 = max(预算×%, 下限)
-# 原因：百分比对短段不公平——240min 的 20% 仅 48min、120min 仅 24min，缓冲被压缩；
-# 加绝对下限保证任何紧段至少预留 30min 缓冲，短段不易被击穿。
 CROSS_SHIFT_AVOID = True  # 紧 Q 链不跨班次（用户规则）：紧链相邻步骤（如 PLASMA→DISPENSE）
 # 的 Q 窗口若跨过班次切换时刻，把链首起点推后到班次之后，使整段链落在同一班次内。
 # best-effort：推后会撑破上游紧链或不可行时保留原排程并输出跨班次告警。可配置关闭。
@@ -922,9 +919,8 @@ def _tight_qtime_target_start(
         else:
             tgt = e_slot - timedelta(minutes=D)
         # 安全余量仅在紧链保留（松链保留余量易把起点推进设备不可用段）。
-        # 实际余量 = max(预算 D 的百分比, 绝对下限)：短段也能保住最小缓冲。
-        margin = (max(D * QTIGHT_SAFETY_MARGIN / 100.0, QTIGHT_MIN_MARGIN)
-                  if is_tight else 0)
+        # 余量为 Q 预算 D 的百分比（默认 20%）：D 越大预留的绝对缓冲越大。
+        margin = D * QTIGHT_SAFETY_MARGIN / 100.0 if is_tight else 0
         tgt = tgt + timedelta(minutes=margin)
         # ---- 紧 Q 链不跨班次（用户规则）：Q 紧时链内相邻步骤不跨班次切换 ----
         # 用"生效起点"评估：max(自然起点, Q 目标)——Q 目标本身可能已把 S 推到 E 当日，
@@ -3367,13 +3363,11 @@ def _coarse_earliest_anchors(
                     need = pos[k - 1] + timedelta(minutes=cts[k - 1] + waits[k - 1])
                     if pos[k] < need:
                         pos[k] = need
-                # 2) 整链总时长是否逼近 min_qtime 预算（含余量：max(预算×%, 下限)）
+                # 2) 整链总时长是否逼近 min_qtime 预算（含余量，余量为百分比）
                 chain_budget = float(info.get("min_qtime") or 0)
                 total_dur = (pos[n - 1] - pos[0]).total_seconds() / 60.0
-                _pull_margin = max(chain_budget * QTIGHT_SAFETY_MARGIN / 100.0,
-                                   QTIGHT_MIN_MARGIN)
                 need_pull = (chain_budget > 0
-                             and total_dur > chain_budget - _pull_margin)
+                             and total_dur > chain_budget * (100.0 - QTIGHT_SAFETY_MARGIN) / 100.0)
                 # 3) 反向背靠背压实（仅当整链逼近预算上限时；后移只缩小链内间隙，
                 #    不违反任何规则，也不会把"钉晚"反向传导给链首）。
                 #    只压实紧 Q-time 段内的步骤：宽松段（如 BAKE→DISPENSE 1440min）
@@ -3589,6 +3583,27 @@ def _count_ref_violations(
             # "闸A/普通引用"硬违背（由 _count_lead_u_violations 单独统计、取优时
             # 置于 Q-time 之后——Q-time 红线优先于对齐软约束）。
             if getattr(ref, "lead_id", "") and str(ref.lead_id).endswith("-u"):
+                continue
+            cons.append(LotConstraint(
+                lot_name=l.lot_name, reference_lot=ref.reference_lot,
+                reference_step=ref.reference_step, start_mod=ref.start_mod,
+                start_step=ref.start_step, hold_periods=ref.hold_periods))
+    if not cons:
+        return 0
+    return len(_check_references(lot_entries, cons, shift_times or []))
+
+
+def _count_lead_u_violations(
+    lot_entries: list,
+    lots: list,
+    shift_times: list,
+) -> int:
+    """统计 lead 上游对齐（-u 软引用）违背数（取优第 5 优先级，排在 Q-time 之后）。"""
+    from validation import _check_references
+    cons = []
+    for l in lots:
+        for ref in l.references or []:
+            if not (getattr(ref, "lead_id", "") and str(ref.lead_id).endswith("-u")):
                 continue
             cons.append(LotConstraint(
                 lot_name=l.lot_name, reference_lot=ref.reference_lot,
@@ -4238,7 +4253,6 @@ def schedule(
     ref_release_forecast: Optional[dict] = None,
     tight_chain_threshold: Optional[int] = None,
     qtight_safety_margin: Optional[float] = None,
-    qtight_min_margin: Optional[float] = None,
     chain_wait_safety: Optional[int] = None,
     cross_shift_avoid: Optional[bool] = None,
     out_warnings: Optional[list] = None,
@@ -4280,7 +4294,6 @@ def schedule(
         ref_release_forecast=None,
         tight_chain_threshold=tight_chain_threshold,
         qtight_safety_margin=qtight_safety_margin,
-        qtight_min_margin=qtight_min_margin,
         chain_wait_safety=chain_wait_safety,
         cross_shift_avoid=cross_shift_avoid,
         out_warnings=None)
@@ -4305,7 +4318,6 @@ def schedule(
         ref_release_forecast=_forecast,
         tight_chain_threshold=tight_chain_threshold,
         qtight_safety_margin=qtight_safety_margin,
-        qtight_min_margin=qtight_min_margin,
         chain_wait_safety=chain_wait_safety,
         cross_shift_avoid=cross_shift_avoid,
         out_warnings=out_warnings)
@@ -4376,7 +4388,6 @@ def _run_schedule_pass(
     ref_release_forecast: Optional[dict] = None,
     tight_chain_threshold: Optional[int] = None,
     qtight_safety_margin: Optional[float] = None,
-    qtight_min_margin: Optional[float] = None,
     chain_wait_safety: Optional[int] = None,
     cross_shift_avoid: Optional[bool] = None,
     out_warnings: Optional[list] = None,
@@ -4393,7 +4404,6 @@ def _run_schedule_pass(
         lot_order: Lot 调度顺序，None 时按优先级排序
         eqp_preferences: 设备偏好
         qtight_safety_margin: 紧 Q-time 安全余量（百分比 0-100，默认 20%）
-        qtight_min_margin: 紧 Q-time 安全余量下限（分钟，默认 30）
 
     Returns:
         (lot_entries, eqp_entries, qtime_alerts)
@@ -4414,15 +4424,13 @@ def _run_schedule_pass(
     if special_lot_step_lookup is None:
         special_lot_step_lookup = {}
 
-    global TIGHT_CHAIN_THRESHOLD, QTIGHT_SAFETY_MARGIN, QTIGHT_MIN_MARGIN, CHAIN_WAIT_SAFETY, CROSS_SHIFT_AVOID
+    global TIGHT_CHAIN_THRESHOLD, QTIGHT_SAFETY_MARGIN, CHAIN_WAIT_SAFETY, CROSS_SHIFT_AVOID
     # 每次调用都写入"生效值"（参数为 None 时恢复模块默认），
     # 避免上一次调用残留的自定义值污染后续以默认参数运行的调用
     # （同进程多请求 / 测试先后调用场景）。
     TIGHT_CHAIN_THRESHOLD = tight_chain_threshold if tight_chain_threshold is not None else 240
     # 安全余量为百分比（0-100，默认 20%）：按紧链 Q 预算 D 的占比预留起点缓冲
     QTIGHT_SAFETY_MARGIN = qtight_safety_margin if qtight_safety_margin is not None else 20.0
-    # 安全余量下限（分钟，默认 30）：实际余量 = max(预算×%, 下限)
-    QTIGHT_MIN_MARGIN = qtight_min_margin if qtight_min_margin is not None else 30.0
     CHAIN_WAIT_SAFETY = chain_wait_safety if chain_wait_safety is not None else 20
     CROSS_SHIFT_AVOID = cross_shift_avoid if cross_shift_avoid is not None else True
 
@@ -4451,8 +4459,10 @@ def _run_schedule_pass(
             for hs, he in lot.hold_periods:
                 if he is None:
                     continue
-                if ready < he:
-                    ready = max(ready, he)
+                hs_dt = hs if hs is not None else datetime.min
+                he_dt = he
+                if ready < he_dt:
+                    ready = max(ready, he_dt)
 
         lot_ready_map[lot.lot_name] = ready
 
@@ -4643,6 +4653,10 @@ def _run_schedule_pass(
             _pf = flow_map.get(_lot.product_name)
             if not _pf:
                 continue
+            try:
+                _lot_cur = get_step_index_in_flow(_pf, _lot.current_step_name)
+            except ValueError:
+                _lot_cur = 0
             for _r in _lot.references or []:
                 if not (_r.reference_lot and _r.start_step):
                     continue

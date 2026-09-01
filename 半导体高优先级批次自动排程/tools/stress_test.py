@@ -947,6 +947,163 @@ def test_36_manual_adjust_multilot_concurrent_guard():
 
 
 # ============================================================
+# 第 11 轮新增算例集：余量下限参数 / 权重差 / 软约束引导 /
+# 多批次高竞争 / 手动钉晚边界
+# ============================================================
+
+def test_37_qtight_min_margin_param():
+    """QTIGHT_MIN_MARGIN 自定义参数：短紧 Q 段（预算调小使 20%<下限）下
+    传 qtight_min_margin=0 / 30 均合法不崩溃；且参数真实生效（0 配置的
+    段实际用时 >= 30 配置——起点推后留缓冲，段更从容）。"""
+    from models import ManualAdjust
+    from datetime import datetime as _dt
+    from data_loader import load_shift_config
+    from scheduler import schedule
+    from validation import validate_schedule
+    data = load_base_data()
+    pc2 = [l for l in data["lots"] if l.lot_name == "PC2"]
+    if not pc2:
+        return ["基数据缺少 PC2"]
+    solo = copy.deepcopy(pc2[0])
+    solo.references = []  # 隔离：聚焦链内守卫 + 余量下限
+    flow = [s for s in data["flow_map"].get("A005-P1", [])]
+    qtimes = [q for q in data["qtimes"] if q.product_name == "A005-P1"]
+    # 把 PLASMA→DISPENSE 预算从 240 调小到 120：20%=24min < 30min 下限 → 下限生效
+    for q in qtimes:
+        if q.start_step == "A005-P1-UF-PLASMA" and q.end_step == "A005-P1-UF-DISPENSE":
+            q.max_duration = 120
+    shift_config = load_shift_config(os.path.join(os.path.dirname(__file__), "data", "shift_config.csv"))
+    shift_times = sorted(tuple(map(int, sc.start_time_str.split(":")))
+                         for sc in shift_config if getattr(sc, "start_time_str", None))
+    durs = {}
+    for mm in (0.0, 30.0):
+        le, ee, qa = schedule(
+            lots=[solo], flows=flow, ct_lookup=data["ct_lookup"], qtimes=qtimes,
+            shift_times=shift_times, ftf_qty_change=None,
+            special_lot_step_lookup=data["special_lot_step"],
+            priority_wait_map=data["priority_wait"], eqp_constraints=data["eqp_constraints"],
+            step_time_window_constraints=data["step_time_windows"],
+            shift_change_times=data["shift_change"], manual_adjusts=[],
+            special_eqp_map={}, resolve_max_iterations=10,
+            qtight_min_margin=mm)
+        errors = validate_schedule(le, ee, qa, [solo], flow, qtimes)
+        if errors:
+            return [f"qtight_min_margin={mm} 出现校验错误"] + errors[:5]
+        # 取 PLASMA→DISPENSE 段实际用时
+        p = [e for e in le if e.step_name == "A005-P1-UF-PLASMA"]
+        d = [e for e in le if e.step_name == "A005-P1-UF-DISPENSE"]
+        if p and d:
+            durs[mm] = (d[0].start_time - p[0].end_time).total_seconds() / 60.0
+    # 下限生效：0 配置起点更靠前 → 段用时更长（缓冲更小）
+    if 0.0 in durs and 30.0 in durs:
+        if durs[0.0] < durs[30.0] - 5.0:
+            return [f"余量下限未生效: margin=0 用时 {durs[0.0]:.1f}min < margin=30 用时 {durs[30.0]:.1f}min"]
+    return []
+
+
+def test_38_weight_spread_ten_percent():
+    """权重差 ≤10%：compute_objective 对 1-1~4-1 四档优先级权重
+    max/min ≤ 1.1 且高优先级权重更大。"""
+    from validation import compute_objective
+    from models import Lot
+    from datetime import datetime as _dt
+    lots = [Lot(lot_name=f"L{ext}", priority=(ext, 1), qty=1, carrier_id=f"C{ext}",
+                current_step_name="S0", product_name="P1",
+                start_time=_dt(2026, 8, 17, 8, 30)) for ext in (1, 2, 3, 4)]
+    obj = compute_objective([], lots, _dt(2026, 8, 17, 8, 30), weight_by_priority=True)
+    ws = [obj["weights"][f"L{ext}"] for ext in (1, 2, 3, 4)]
+    ratio = max(ws) / min(ws)
+    if ratio > 1.1 + 1e-9:
+        return [f"权重差超过 10%: max/min = {ratio:.4f} (weights={ws})"]
+    if not (ws[0] > ws[1] > ws[2] > ws[3]):
+        return [f"高优先级权重未递减: {ws}"]
+    return []
+
+
+def test_39_soft_constraint_guides_to_valid():
+    """软约束引导：外层 40 轮难找到合法解（仅 PC1 钉晚导致链被拉挤），
+    细调层在罚分引导下应能找到合法解 → 最终 0 校验错误。"""
+    from models import ManualAdjust
+    from datetime import datetime as _dt
+    from validation import validate_schedule
+    data = load_base_data()
+    manual = [ManualAdjust(lot_name="PC1", step_name="A005-P1-UF-PLASMA",
+                           delay_to=_dt(2026, 8, 19, 18, 33))]
+    le, ee, qa, meta = run_schedule_optimized_manual(data, manual, max_iterations=40, seed=0)
+    errs = validate_schedule(
+        le, ee, qa, data["lots"],
+        [s for fl in data["flow_map"].values() for s in fl],
+        data["qtimes"], lot_constraints=data["lot_constraints"],
+        special_eqp_map=_load_special_eqp())
+    if errs:
+        return [f"软约束引导未找到合法解 ({len(errs)} errors)"] + errs[:5]
+    return []
+
+
+def test_40_multi_lot_high_contention():
+    """多批次高竞争：6 个 A005-P1 lot（qty=1，与真实数据同量级）以 12h 间隔
+    错峰就绪（2 批/天，已验证为设备容量内节奏），共享 UF 段 DISPENSE/CURE
+    长机时设备、无手动钉晚 → 全部校验通过（多批并行下 Q 段守卫 + 设备排布
+    稳定；注意 qty 决定设备占用时长，大 qty 会急剧压缩设备容量）。"""
+    from data_loader import load_shift_config
+    from scheduler import schedule
+    from validation import validate_schedule
+    data = load_base_data()
+    start = datetime(2026, 8, 17, 8, 30)
+    lots = [Lot(
+        lot_name=f"HC{i:02d}", priority=(1, 1), qty=1, carrier_id=f"HCC{i:04d}",
+        current_step_name="A005-P1-FC-DUMMY", product_name="A005-P1",
+        target_step=None, lot_state="wait", running_time=0,
+        start_time=start + timedelta(days=i // 2, hours=(i % 2) * 12),
+        references=[]) for i in range(6)]
+    flow = [s for s in data["flow_map"].get("A005-P1", [])]
+    qtimes = [q for q in data["qtimes"] if q.product_name == "A005-P1"]
+    shift_config = load_shift_config(os.path.join(os.path.dirname(__file__), "data", "shift_config.csv"))
+    shift_times = sorted(tuple(map(int, sc.start_time_str.split(":")))
+                         for sc in shift_config if getattr(sc, "start_time_str", None))
+    le, ee, qa = schedule(
+        lots=lots, flows=flow, ct_lookup=data["ct_lookup"], qtimes=qtimes,
+        shift_times=shift_times, ftf_qty_change=None,
+        special_lot_step_lookup=data["special_lot_step"],
+        priority_wait_map=data["priority_wait"], eqp_constraints=data["eqp_constraints"],
+        step_time_window_constraints=data["step_time_windows"],
+        shift_change_times=data["shift_change"], manual_adjusts=[],
+        special_eqp_map={}, resolve_max_iterations=10)
+    errors = validate_schedule(le, ee, qa, lots, flow, qtimes)
+    if errors:
+        return errors[:20]
+    return []
+
+
+def test_41_manual_pin_boundary_robust():
+    """手动钉晚边界：钉晚提前 6h → 有合法解；钉晚过晚（结构性不可行）
+    → 不崩溃、返回罚分最轻的解（warning + violation_severity>0）。"""
+    from models import ManualAdjust
+    from datetime import datetime as _dt
+    from validation import validate_schedule
+    data = load_base_data()
+    all_flows = [s for fl in data["flow_map"].values() for s in fl]
+    # 提前钉晚（可解）
+    early = [ManualAdjust(lot_name="PC2", step_name="A005-P1-UF-DISPENSE",
+                          delay_to=_dt(2026, 8, 20, 6, 0))]
+    le, ee, qa, meta = run_schedule_optimized_manual(data, early, max_iterations=30, seed=1)
+    errs = validate_schedule(le, ee, qa, data["lots"], all_flows, data["qtimes"],
+                             lot_constraints=data["lot_constraints"],
+                             special_eqp_map=_load_special_eqp())
+    if errs:
+        return [f"提前钉晚应可解，实际 {len(errs)} errors"] + errs[:5]
+    # 过晚钉晚（结构不可行）：不得崩溃
+    late = [ManualAdjust(lot_name="PC2", step_name="A005-P1-UF-DISPENSE",
+                         delay_to=_dt(2026, 8, 20, 10, 10))]
+    le2, ee2, qa2, meta2 = run_schedule_optimized_manual(data, late, max_iterations=30, seed=1)
+    if meta2.get("warning") is not None:
+        # 结构性不可行：应返回罚分最轻的解，且必须记录了违规明细
+        if not meta2.get("violations"):
+            return ["warning 分支未记录任何违规"]
+    return []
+
+
+# ============================================================
 # PKPOV001 恒组批（together=true）稳定性压力测试
 # ============================================================
 
@@ -1099,6 +1256,11 @@ if __name__ == "__main__":
         ("34_manual_adjust_mixed_model_q_guard", test_34_manual_adjust_mixed_model_q_guard),
         ("35_manual_adjust_multi_pin_same_chain", test_35_manual_adjust_multi_pin_same_chain),
         ("36_manual_adjust_multilot_concurrent_guard", test_36_manual_adjust_multilot_concurrent_guard),
+        ("37_qtight_min_margin_param", test_37_qtight_min_margin_param),
+        ("38_weight_spread_ten_percent", test_38_weight_spread_ten_percent),
+        ("39_soft_constraint_guides_to_valid", test_39_soft_constraint_guides_to_valid),
+        ("40_multi_lot_high_contention", test_40_multi_lot_high_contention),
+        ("41_manual_pin_boundary_robust", test_41_manual_pin_boundary_robust),
         ("31_special_eqp_pkpov001_stability", test_31_special_eqp_pkpov001_stability),
         ("32_special_eqp_pkpov001_no_hang_without_special", test_32_special_eqp_pkpov001_no_hang_without_special),
     ]

@@ -373,7 +373,7 @@ def auto_repair_step_ct(flows: list[FlowStep], step_cts: list[StepCT],
         return step_cts
 
     print(f"[data_loader.auto_repair_step_ct] 检测到 step_ct.csv 缺失 {len(missing_steps)} 个步骤，")
-    print(f"    （例如用户刚改完 flow.csv 但没保存 step_ct.csv）自动生成 CT 并回写：")
+    print("    （例如用户刚改完 flow.csv 但没保存 step_ct.csv）自动生成 CT 并回写：")
     for s in missing_steps:
         print(f"      - {s.product_name} / {s.step_name} ({s.step_number})")
 
@@ -657,7 +657,6 @@ def health_check_lead(lots: list[Lot], flow_map: dict[str, list[FlowStep]]) -> l
 
 def load_ftf_qty_change(filepath: str) -> dict[str, tuple[int, int, str]]:
     """加载 FTF qty 变化表，返回 {product_name: (input_number, output_number, change_step)}"""
-    import math
     df = _read_csv(filepath)
     result = {}
     for _, row in df.iterrows():
