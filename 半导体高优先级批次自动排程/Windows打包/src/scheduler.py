@@ -693,8 +693,13 @@ def _cross_shift_push_target(
 ) -> Optional[datetime]:
     """紧 Q 链不跨班次（用户规则）：S 若落在 E 所在班次的"紧邻前一个班次"内
     （即 S→E 的窗口跨过班次切换时刻、且两步骤同日相邻班次），返回应把 S 起点
-    推后的目标时刻 = E 所在班次的开始；否则返回 None（S 与 E 已同班次，或
-    S 距 E 超过一个班次——跨日/多日链不适用本规则，避免把链整体推迟一整天）。
+    推后的目标时刻 = E 所在班次的开始（跳过交接班禁用窗，链首不落在交接班时刻）；
+    否则返回 None（S 与 E 已同班次，或 S 距 E 超过一个班次——跨日/多日链不适用
+    本规则，避免把链整体推迟一整天）。
+
+    注意：返回的目标是"班次起点"，处于交接班禁用窗（如 08:30-09:30）之内时，
+    调用方在 _resolve_constraints/_skip_shift_change 中会把起点继续推到窗后
+    （09:30/21:30），保证链首不在交接班时刻开工。
     """
     if not shift_change_intervals:
         return None
@@ -707,6 +712,16 @@ def _cross_shift_push_target(
     if s_start < e_shift_start and (e_shift_start - s_start) <= timedelta(hours=12):
         return e_shift_start
     return None
+
+
+def _q_target_margin(q) -> float:
+    """紧 Q 规则的余量目标（分钟）：安全余量 = max(预算×%, 下限)。
+    松链（预算 > 紧链阈值）不设余量目标（余量由自然排布决定）。
+    """
+    D = q.max_duration
+    if D is None or D > TIGHT_CHAIN_THRESHOLD:
+        return 0.0
+    return max(D * QTIGHT_SAFETY_MARGIN / 100.0, QTIGHT_MIN_MARGIN)
 
 
 def _tight_qtime_target_start(
@@ -768,6 +783,9 @@ def _tight_qtime_target_start(
         is_tight = D <= TIGHT_CHAIN_THRESHOLD
 
         # ---- 估算 E 的自然就绪时间（S 在 s_start 开始，沿链推进到 E） ----
+        # 中间步骤也受设备占用/换班窗约束：若只按 CT+等待推进，会把 E 的可行开始
+        # 估早，导致 S 延迟不足、E 实际落点靠后、余量被侵蚀到极限（用户反馈根因）。
+        # 这里逐步用 _find_earliest_slot 模拟中间步骤的真实槽位（与其单步调度一致）。
         e_ready = s_start + timedelta(minutes=max(ct, 0))
         for i in range(si + 1, e_idx):
             mid_ct = get_step_ct(ct_lookup, rem[i].product_name, rem[i].step_number, lot.qty)
@@ -777,6 +795,16 @@ def _tight_qtime_target_start(
                     sls = special_lot_step_lookup[sls_key]
                     if sls.special_ct is not None:
                         mid_ct = sls.special_ct
+            _mid_eqps = list(rem[i].eqp_ids) if rem[i].eqp_ids else ["-"]
+            if _mid_eqps != ["-"] and machine_intervals:
+                _mid_free = datetime.max
+                for _meid in _mid_eqps:
+                    _cand = _find_earliest_slot(
+                        machine_intervals.get(_meid, []), e_ready, timedelta(minutes=mid_ct))
+                    if _cand < _mid_free:
+                        _mid_free = _cand
+                if _mid_free != datetime.max and _mid_free > e_ready:
+                    e_ready = _mid_free
             e_ready += timedelta(minutes=mid_ct + get_step_wait_time(
                 lot.priority[0], lot.priority[1], priority_wait_map))
 
@@ -971,8 +999,11 @@ def _tight_qtime_target_start(
             _eff_start = tgt if tgt > s_start else s_start
             _st = _cross_shift_push_target(_eff_start, e_slot, shift_change_intervals)
             if _st is not None:
-                # 设备可用守卫：S 的设备在 _st 时刻必须有可用槽（否则推后必被挤到
-                # 更晚、不再干净对齐班次起点，且会拖累整链）
+                # 设备可用守卫（用户规则"整体后移"：不要求恰好卡在班次起点）：
+                # 交接班禁用窗内设备不可开工，推后目标 _st 会在后续 _resolve_constraints
+                # 中跳到窗后（09:30/21:30）。此处只需 S 的设备在"目标班次内"有可用槽
+                # （早于下一班次边界），推后即有效——避免因设备在班次起点时刻被占就
+                # 放弃整体后移、让紧链仍跨班次（用户反馈根因）。
                 if step.eqp_ids:
                     _free_at_bnd = datetime.max
                     for _eid in step.eqp_ids:
@@ -980,8 +1011,14 @@ def _tight_qtime_target_start(
                             machine_intervals.get(_eid, []), _st, timedelta(minutes=ct))
                         if _c < _free_at_bnd:
                             _free_at_bnd = _c
-                    if _free_at_bnd == datetime.max or _free_at_bnd > _st + timedelta(minutes=5):
-                        _st = None
+                    _next_bnd = None
+                    for _ws2, _wse2 in shift_change_intervals:
+                        if _ws2 > _st:
+                            _next_bnd = _ws2
+                            break
+                    if (_free_at_bnd == datetime.max
+                            or (_next_bnd is not None and _free_at_bnd >= _next_bnd)):
+                        _st = None     # 班次内无可用槽：推后无意义，保留跨班次告警
                 # 全程窗口保护：S 推后会把 E（及以 E 为终点的 Q 窗口终点）一起推后最多
                 # delay。用 ready_time−步间等待 作为"上游锚点"估算各以 E 为终点的
                 # Q 窗口当前占用：占用 + delay > 预算则放弃推后（避免把本就在
@@ -2069,7 +2106,11 @@ def _precompute_whole_chain_block(
                 continue
             _qas = _g_starts[_qk] if (_q.start_mod or "track in").strip() == "track in" else _g_ends[_qk]
             _qae = _g_starts[_qe] if (_q.end_mod or "track out").strip() == "track in" else _g_ends[_qe]
-            if (_qae - _qas).total_seconds() / 60.0 > _q.max_duration:
+            # 余量目标：紧链不仅要"不超 Q"，还要留出用户设置的安全余量
+            # （span <= D - safe）。贪心自然放置把端步骤 E 顶到极限（余量≈0）时，
+            # 判定失败回退倒排——倒排把链首拉回贴近 E，余量恢复。
+            _span_g = (_qae - _qas).total_seconds() / 60.0
+            if _span_g > _q.max_duration - _q_target_margin(_q):
                 _g_ok = False
                 break
     if _g_ok:
@@ -2221,8 +2262,15 @@ def _precompute_whole_chain_block(
                 print(f"[QFAIL] {lot.lot_name} {chain_start} iter={_iter} order_fail names={names[:6]}", flush=True)
             return None  # 畸形（顺序违例）计划不可返回：回退单步调度
 
-        # 3. 逐条校验链内 Q-time
+        # 3. 逐条校验链内 Q-time 与跨班次
+        # 余量目标：紧链 span 必须 <= D - safe（留出用户安全余量）。倒排收敛后链已
+        # 紧凑（max_gap==0），span 为链自身固有长度，继续推链首只会让整链同步平移、
+        # span 不变（余量不变）→ 视为"可接受的最佳"直接采用（余量缺口由校验/优化器
+        # 报告）；仅当真·超 Q（span > D）或跨班次（推后能改变位置、span 不变也有效）
+        # 时才反推链首重试。
         violation = None
+        cs_target = None          # 跨班次推后目标（链首起点）
+        margin_only = False       # 仅余量缺口（span<=D 但 < D-safe）：紧凑链不可改善
         for q in chain_qs:
             qk = _chain_step_pos(names, q.start_step)
             qe = _chain_step_pos(names, q.end_step)
@@ -2230,7 +2278,26 @@ def _precompute_whole_chain_block(
                 continue
             q_astart = starts[qk] if (q.start_mod or "track in").strip() == "track in" else ends[qk]
             q_aend = starts[qe] if (q.end_mod or "track out").strip() == "track in" else ends[qe]
-            if (q_aend - q_astart).total_seconds() / 60.0 > q.max_duration:
+            _span_m = (q_aend - q_astart).total_seconds() / 60.0
+            if _span_m > q.max_duration:
+                violation = q
+                break
+            # 紧 Q 对跨班次（用户规则）：窗口跨过班次切换时刻 → 链首整体后移。
+            # 先于余量缺口判断：紧凑链的余量缺口不可推改善，但跨班次可通过整链平移
+            # 到班次起点解决（span 不变、位置改变）。
+            if CROSS_SHIFT_AVOID and shift_change_intervals:
+                _Dq = q.max_duration
+                if _Dq is not None and _Dq <= TIGHT_CHAIN_THRESHOLD:
+                    _cs = _cross_shift_push_target(q_astart, q_aend, shift_change_intervals)
+                    if _cs is not None and _cs > q_astart:
+                        violation = q
+                        cs_target = _cs
+                        break
+            if _span_m > q.max_duration - _q_target_margin(q):
+                margin_only = True
+                if max_gap <= timedelta(0):
+                    # 紧凑链的固有跨度就超余量目标：推后无效，接受（最佳余量）
+                    continue
                 violation = q
                 break
         if violation is None:
@@ -2240,12 +2307,18 @@ def _precompute_whole_chain_block(
                 plan[i] = (eqps[k], starts[k], ends[k])
             return plan
 
-        # 4. Q-time 超时：反推更晚的链首，重试
+        # 4. Q-time 超时/余量不足/跨班次：反推更晚的链首，重试
         qk = _chain_step_pos(names, violation.start_step)
         qe = _chain_step_pos(names, violation.end_step)
         q_astart = starts[qk] if (violation.start_mod or "track in").strip() == "track in" else ends[qk]
         q_aend = starts[qe] if (violation.end_mod or "track out").strip() == "track in" else ends[qe]
-        target_start = q_aend - timedelta(minutes=violation.max_duration)
+        if cs_target is not None:
+            # 跨班次：链首直接推到班次起点（跳过交接窗），整体后移
+            target_start = cs_target
+        else:
+            # 余量缺口（非紧凑链，可推）：span 目标 = D - safe；真·超 Q：仅保证 span<=D
+            _m2 = _q_target_margin(violation) if margin_only else 0.0
+            target_start = q_aend - timedelta(minutes=violation.max_duration - _m2)
         if os.environ.get("QFAIL"):
             _st_strs = [(st.strftime("%m/%d %H:%M") if st else None) for st in starts]
             print(f"[QFAIL] {lot.lot_name} chain_start={chain_start} iter={_iter} "
@@ -4410,8 +4483,12 @@ def schedule(
     #      把链首后移到满足 Q 预算的位置（如 BAKE→DISPENSE 1445min>1440min 场景）。
     #      只后移不前置；设备冲突 / 上游 Q 被撑爆 / 校验违规增加时整体回滚。
     try:
+        _ss_win = min((e.start_time for e in _best_le), default=datetime.now())
         _fix_qtime_overflow_pull_chain_start(
-            _best_le, _best_ee, _best_qa, _orig_lots, flows, qtimes, shift_times)
+            _best_le, _best_ee, _best_qa, _orig_lots, flows, qtimes, shift_times,
+            shift_change_intervals=(
+                _expand_shift_change_times(shift_change_times, _ss_win)
+                if shift_change_times else None))
     except Exception:
         pass
     # ---- 紧 Q 链跨班次风险告警（仅提示，不改变结果）----
@@ -4443,7 +4520,8 @@ def _prev_step_name(flows: list, product_name: str, step_name: str) -> Optional[
 
 
 def _fix_qtime_overflow_pull_chain_start(le, ee, qa, lots, flows, qtimes,
-                                         shift_times=None) -> int:
+                                         shift_times=None,
+                                         shift_change_intervals=None) -> int:
     """超 Q 后修复（尽力而为）。
 
     场景：长 Q-time 段的链首步骤（如 real1 的 BAKE）被自然排得很早，端步骤
@@ -4453,8 +4531,10 @@ def _fix_qtime_overflow_pull_chain_start(le, ee, qa, lots, flows, qtimes,
 
     策略（只后移、不前置，失败即放弃保持原样）：
       1) 对每个"超时" Q-time 告警，定位链首 entry A 与端步骤 entry B；
-      2) 目标：A 的参考时刻 ≥ B 参考 - 预算。参考点规则：
+      2) 目标：A 的参考时刻 ≥ B 参考 - (预算 - 安全余量)。参考点规则：
          start_mod 决定 A 侧（track out=结束 / track in=开始），end_mod 决定 B 侧；
+         紧链按用户安全余量（span ≤ D - safe）而非"刚好卡线 D-1min"（余量 1min
+         的用户反馈根因）；跨班次时优先把链首整体后移到 B 所在班次（跳过交接窗）；
       3) 用设备占用区间找 ≥ (A.start + 需后移量) 的最早可用槽，保序（不越过 B）；
       4) 上游 Q 保护：A 后移不得撑爆 (prev→A) 段预算（否则放弃，见已知限制）；
       5) 通过则同步更新 lot/设备维度 entry，告警标记 OK；
@@ -4500,9 +4580,12 @@ def _fix_qtime_overflow_pull_chain_start(le, ee, qa, lots, flows, qtimes,
             start_mod = (q.start_mod or "track in").strip()   # A 侧参考
             end_mod = (q.end_mod or "track out").strip()      # B 侧参考
             b_ref = B.start_time if end_mod == "track in" else B.end_time
-            # 链首参考时刻的合规下限：间隔 = b_ref - a_ref，要求 ≤ 预算
-            # → a_ref ≥ b_ref - 预算。a_ref 越小（链首排得越早）间隔越大越易超时。
-            a_ref_min = b_ref - timedelta(minutes=budget)
+            # 链首参考时刻的合规下限：间隔 = b_ref - a_ref，要求 ≤ 预算 - 安全余量
+            # → a_ref ≥ b_ref - (预算 - 安全余量)。a_ref 越小（链首排得越早）间隔越大越易超时。
+            # 安全余量（用户规则）：紧链不只"不超 Q"，还要留出 max(预算×%, 下限) 的缓冲，
+            # 不再把链首刚好卡在 D-1min（余量 1min，用户反馈根因）。松链不设余量目标。
+            _target_span = budget - _q_target_margin(q)
+            a_ref_min = b_ref - timedelta(minutes=_target_span)
             a_ref_now = A.end_time if start_mod == "track out" else A.start_time
             if a_ref_now >= a_ref_min:
                 continue  # 链首已够晚，间隔合规
@@ -4522,6 +4605,22 @@ def _fix_qtime_overflow_pull_chain_start(le, ee, qa, lots, flows, qtimes,
             # 保序：链首后移不得越过端步骤
             if new_start + timedelta(minutes=A.ct) > B.start_time:
                 continue
+            # 跨班次整链后移（用户规则）：后移目标若落在 B 所在班次的紧邻前一个班次
+            #（即 A→B 窗口跨过班次切换），把 A 起点推到 B 所在班次起点（跳过交接窗），
+            # 使整段链落在同一班次内；若推后越序（A 越过 B）则放弃跨班次对齐，保留
+            # 按余量目标的后移（余量优先于跨班次，跨班次由告警提示）。
+            if shift_change_intervals:
+                _cs_lo = _cross_shift_push_target(new_start, B.start_time,
+                                                  shift_change_intervals)
+                if _cs_lo is not None and _cs_lo > new_start:
+                    # 班次起点落在交接班禁用窗内：解析到窗后（09:30/21:30）再落槽，
+                    # 避免把链首排进交接班时段
+                    _cs_resolved = _skip_shift_change(_cs_lo, shift_change_intervals)
+                    _cs_start = _find_earliest_slot(occ, _cs_resolved,
+                                                    timedelta(minutes=A.ct))
+                    if (_cs_start != datetime.max
+                            and _cs_start + timedelta(minutes=A.ct) <= B.start_time):
+                        new_start = _cs_start
             # 上游 Q 检查：A 作为 end 步骤（规则 prev_step→ss），移动不得撑爆上游预算
             if prev_e is not None and prev_step:
                 upq = qrule_by_key.get((prod, prev_step, ss))
