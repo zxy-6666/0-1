@@ -250,7 +250,6 @@ def load_lot_list(filepath: str, constraints_filepath: Optional[str] = None) -> 
             lot_name=lot_name,
             priority=parse_priority(str(row["priority"])),
             qty=int(row["qty"]),
-            carrier_id=_safe_str(row, "carrier_id"),
             current_step_name=_safe_str(row, "step_name"),
             product_name=_safe_str(row, "product_name"),
             target_step=target,
@@ -821,6 +820,7 @@ def load_step_time_windows(filepath: str) -> list[StepTimeWindow]:
             end_end_time_str=end_end_time if end_end_time else None,
             end_date_str=end_day_str if end_day_str else None,
             end_week=end_week,
+            product_name=_safe_str(row, "product_name") if "product_name" in row.index else None,
         ))
     return windows
 

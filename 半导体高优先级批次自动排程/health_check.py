@@ -27,6 +27,7 @@ def check_data(
     manual_adjusts=None,
     special_eqp_map=None,
     ftf_qty_change=None,
+    step_time_window_constraints=None,
 ) -> dict:
     """执行全部数据体检项，返回 {"errors": [...], "warnings": [...]}"""
     errors: list[str] = []
@@ -139,5 +140,21 @@ def check_data(
             continue
         if change_step and change_step not in _flow_step_names(flow_map[product]):
             warnings.append(f"ftf_qty_change.csv 中步骤 [{product}/{change_step}] 不在其产品流程中")
+
+    # ---- 11. step_time_window 的步骤不存在 ----
+    for w in step_time_window_constraints or []:
+        if w.product_name:
+            # 填写了 product_name：精确校验该产品流程
+            if w.product_name not in product_names:
+                errors.append(f"step_time_window.csv 中产品 [{w.product_name}] 无流程")
+                continue
+            if w.step_name not in _flow_step_names(flow_map[w.product_name]):
+                errors.append(
+                    f"step_time_window.csv 中步骤 [{w.product_name}/{w.step_name}] 不在其产品流程中")
+        else:
+            # 未填 product_name：在全部流程步骤中查找（向后兼容旧格式）
+            step_names_all = {s.step_name for s in flows}
+            if w.step_name not in step_names_all:
+                errors.append(f"step_time_window.csv 中步骤 [{w.step_name}] 不在任何产品流程中")
 
     return {"errors": errors, "warnings": warnings}

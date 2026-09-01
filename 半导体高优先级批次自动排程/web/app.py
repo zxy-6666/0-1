@@ -107,6 +107,41 @@ def tables():
     return jsonify(tables)
 
 
+@app.route('/api/form-options', methods=['GET'])
+def form_options():
+    """表单下拉参照数据：产品→步骤、Lot→产品，供前端按 product_name 联动下拉。
+
+    与排程共用 data_loader 解析，保证下拉选项与排程实际接受的步骤/产品一致。
+    """
+    try:
+        from data_loader import load_flow, load_lot_list, get_product_flow_map
+        flows = load_flow(os.path.join(DATA_DIR, "flow.csv"))
+        flow_map = get_product_flow_map(flows)
+        product_steps = {
+            product: [s.step_name for s in steps]
+            for product, steps in sorted(flow_map.items())
+        }
+        products = sorted(product_steps.keys())
+        lots = []
+        if os.path.exists(os.path.join(DATA_DIR, "lot_list.csv")):
+            lots = load_lot_list(
+                os.path.join(DATA_DIR, "lot_list.csv"),
+                constraints_filepath=os.path.join(DATA_DIR, "lot_constraints.csv"))
+        lot_names = sorted({l.lot_name for l in lots})
+        lot_product = {l.lot_name: l.product_name for l in lots}
+        return jsonify({
+            "success": True,
+            "products": products,
+            "product_steps": product_steps,
+            "lot_names": lot_names,
+            "lot_product": lot_product,
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/table/<name>', methods=['GET'])
 def get_table(name):
     if not _safe_table_name(name):
@@ -739,6 +774,7 @@ def health_check():
             load_lot_list, load_flow, load_step_ct, load_qtime,
             load_special_lot_step, load_priority_wait, load_lot_constraints,
             load_manual_adjusts, load_special_eqp, load_ftf_qty_change,
+            load_step_time_windows,
         )
         from health_check import check_data
 
@@ -753,6 +789,7 @@ def health_check():
         manual_adjusts = load_manual_adjusts(f"{DATA_DIR}/manual_adjust.csv") if os.path.exists(f"{DATA_DIR}/manual_adjust.csv") else []
         special_eqp_map = load_special_eqp(f"{DATA_DIR}/special_eqp.csv") if os.path.exists(f"{DATA_DIR}/special_eqp.csv") else {}
         ftf_qty_change = load_ftf_qty_change(f"{DATA_DIR}/ftf_qty_change.csv") if os.path.exists(f"{DATA_DIR}/ftf_qty_change.csv") else {}
+        step_time_windows = load_step_time_windows(f"{DATA_DIR}/step_time_window.csv") if os.path.exists(f"{DATA_DIR}/step_time_window.csv") else []
 
         result = check_data(
             lots, flows, step_cts, qtimes,
@@ -762,6 +799,7 @@ def health_check():
             manual_adjusts=manual_adjusts,
             special_eqp_map=special_eqp_map,
             ftf_qty_change=ftf_qty_change,
+            step_time_window_constraints=step_time_windows,
         )
         return jsonify({
             "success": True,

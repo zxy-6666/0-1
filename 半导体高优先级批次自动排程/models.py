@@ -45,12 +45,12 @@ class Lot:
     lot_name: str
     priority: tuple[int, int]  # (外部优先级, 内部优先级)
     qty: int
-    carrier_id: str
     current_step_name: str     # 当前所在的 step_name
     product_name: str
     target_step: Optional[str] = None  # None 表示排到底
     lot_state: str = ""        # running / wait / hold / "" (空闲)
     running_time: int = 0      # 当前步骤已运行时间(分钟)
+    carrier_id: str = ""       # 载具 ID（历史遗留列，已在 lot_list.csv 移除，保留字段兼容旧数据/工具脚本）
     # 约束字段（从 lot_constraints.csv 合并而来）
     references: list[LotConstraint] = field(default_factory=list)  # 多 reference 依赖
     lead_pairs: list[LeadPair] = field(default_factory=list)       # 本 lot 作为领导批(lead 侧重)的衔接关系
@@ -172,6 +172,7 @@ class StepTimeWindow:
     end_end_time_str: Optional[str] = None        # hh:mm，结束时间窗结束
     end_date_str: Optional[str] = None            # 结束时间窗的日期约束
     end_week: Optional[int] = None                # 结束时间窗的周几约束
+    product_name: Optional[str] = None            # 所属产品（前端按产品过滤下拉用，可缺省）
 
 
 @dataclass

@@ -495,6 +495,76 @@ const DROPDOWN_COLUMNS = {
   }
 };
 
+// 动态下拉列：选项依赖同一行其他列的值（通过 product_name ↔ flow 关联）
+// 驱动列（select）变化时触发整行重渲染，被驱动列（datalist）随之刷新选项。
+// options: (row) => [[value, label], ...]
+const DYNAMIC_OPTIONS = {
+  'lot_list.csv': {
+    'product_name': { type: 'select', options: () => FORM_OPTIONS.products.map(p => [p, p]) },
+    'step_name': { type: 'datalist', options: (row) => stepsOfProduct(row['product_name']) },
+    'target_step': { type: 'datalist', options: (row) => stepsOfProduct(row['product_name']) }
+  },
+  'lot_constraints.csv': {
+    'lot1': { type: 'select', options: () => FORM_OPTIONS.lot_names.map(l => [l, l]) },
+    'lot2': { type: 'select', options: () => FORM_OPTIONS.lot_names.map(l => [l, l]) },
+    'step1': { type: 'datalist', options: (row) => stepsOfLot(row['lot1']) },
+    'step2': { type: 'datalist', options: (row) => stepsOfLot(row['lot2']) }
+  },
+  'special_lot_step.csv': {
+    'lot_name': { type: 'select', options: () => FORM_OPTIONS.lot_names.map(l => [l, l]) },
+    'step_name': { type: 'datalist', options: (row) => stepsOfLot(row['lot_name']) }
+  },
+  'step_time_window.csv': {
+    'product_name': { type: 'select', options: () => FORM_OPTIONS.products.map(p => [p, p]) },
+    'step_name': { type: 'datalist', options: (row) => stepsOfProduct(row['product_name']) }
+  }
+};
+
+// 日历控件列：渲染 <input type="datetime-local">（浏览器原生日历+时间选择）
+const DATETIME_LOCAL_COLUMNS = {
+  'lot_list.csv': { 'start_time': true }
+};
+
+// 下拉参照数据（来自 /api/form-options，与排程共用 data_loader 解析）
+let FORM_OPTIONS = { products: [], product_steps: {}, lot_names: [], lot_product: {} };
+
+async function loadFormOptions() {
+  try {
+    const res = await fetch(API + '/form-options');
+    const data = await res.json();
+    if (data.success) FORM_OPTIONS = data;
+  } catch (e) {
+    console.warn('加载下拉参照数据失败', e);
+  }
+}
+
+// 产品 → 步骤下拉选项
+function stepsOfProduct(product) {
+  const steps = (product && FORM_OPTIONS.product_steps[product]) || [];
+  return steps.map(s => [s, s]);
+}
+
+// Lot → 其产品的步骤下拉选项（lot_constraints / special_lot_step 用）
+function stepsOfLot(lot) {
+  return stepsOfProduct((lot && FORM_OPTIONS.lot_product[lot]) || '');
+}
+
+// 存储格式 "2026/8/17 8:30" → datetime-local 值 "2026-08-17T08:30"
+function toLocalInput(s) {
+  const m = String(s || '').trim().match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})\s+(\d{1,2}):(\d{1,2})$/);
+  if (!m) return '';
+  return m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0') + 'T' +
+         m[4].padStart(2, '0') + ':' + m[5];
+}
+
+// datetime-local 值 "2026-08-17T08:30" → 存储格式 "2026/8/17 8:30"
+function fromLocalInput(v) {
+  const m = String(v || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!m) return String(v || '').trim();
+  return m[1] + '/' + parseInt(m[2], 10) + '/' + parseInt(m[3], 10) + ' ' +
+         parseInt(m[4], 10) + ':' + m[5];
+}
+
 // 列头单位提示：{ 表名: { 列名: '单位' } }
 const UNIT_HINTS = {
   'lot_list.csv': { 'running_time': '分钟' }
@@ -561,8 +631,30 @@ function h(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// 渲染单个单元格，支持下拉列
-function renderCell(table, col, value) {
+// 渲染单个单元格，支持静态下拉、动态下拉（依赖同行其他列）与日历控件
+function renderCell(table, col, value, row) {
+  // 1. 日历控件列（如 lot_list.start_time）
+  if ((DATETIME_LOCAL_COLUMNS[table] || {})[col]) {
+    const localVal = toLocalInput(value);
+    return '<td><input type="datetime-local" class="cell-input cell-datetime" value="' + h(localVal) + '"></td>';
+  }
+
+  // 2. 动态下拉列（选项依赖 row 中其他列）
+  const dyn = (DYNAMIC_OPTIONS[table] || {})[col];
+  if (dyn) {
+    const opts = dyn.options(row || {}).map(([v, label]) => {
+      const sel = String(value ?? '') === v ? ' selected' : '';
+      return '<option value="' + h(v) + '"' + sel + '>' + h(label) + '</option>';
+    }).join('');
+    if (dyn.type === 'select') {
+      return '<td><select class="cell-select">' + opts + '</select></td>';
+    }
+    const listId = 'dl_dyn_' + table.replace(/[^a-zA-Z0-9]/g, '_') + '_' + col;
+    return '<td><input class="cell-input" list="' + listId + '" value="' + h(String(value ?? '')) + '">' +
+           '<datalist id="' + listId + '">' + opts + '</datalist></td>';
+  }
+
+  // 3. 静态下拉列
   const dd = (DROPDOWN_COLUMNS[table] || {})[col];
   if (!dd) {
     return '<td contenteditable="true">' + h(String(value ?? '')) + '</td>';
@@ -653,7 +745,7 @@ function renderTableBody() {
     var cls = (origIdx === selectedRow) ? 'selected' : '';
     return '<tr class="' + cls + '" data-row="' + origIdx + '">' +
       '<td class="col-seq">' + (displayIdx + 1) + '</td>' +
-      columns.map(c => renderCell(currentTable, c, row[c])).join('') +
+      columns.map(c => renderCell(currentTable, c, row[c], row)).join('') +
       '</tr>';
   }).join('');
 }
@@ -680,7 +772,7 @@ function collectData() {
       if (sel) {
         rows[origIdx][c] = sel.value;
       } else if (inp) {
-        rows[origIdx][c] = inp.value.trim();
+        rows[origIdx][c] = (inp.type === 'datetime-local' ? fromLocalInput(inp.value) : inp.value.trim());
       } else {
         rows[origIdx][c] = (td.textContent || '').trim();
       }
@@ -809,7 +901,7 @@ tableBody.addEventListener('click', e => {
   }
 });
 
-// 单元格输入即时同步到 rows（contenteditable / datalist / select）——
+// 单元格输入即时同步到 rows（contenteditable / datalist / select / datetime-local）——
 // 防止任何重渲染（筛选/添加行/切表等）把尚未保存的输入内容冲掉
 tableBody.addEventListener('input', e => {
   const td = e.target.closest('td');
@@ -824,8 +916,14 @@ tableBody.addEventListener('input', e => {
   const inp = td.querySelector('input.cell-input');
   if (sel) {
     rows[origIdx][columns[colIdx]] = sel.value;
+    // 驱动列（如 product_name / lot1 / lot2 / lot_name）：变化后重渲染，
+    // 让依赖它的下拉列（step_name / step1 / step2）选项随之刷新
+    const dynDef = (DYNAMIC_OPTIONS[currentTable] || {})[columns[colIdx]];
+    if (dynDef && dynDef.type === 'select') {
+      renderTableBody();
+    }
   } else if (inp) {
-    rows[origIdx][columns[colIdx]] = inp.value.trim();
+    rows[origIdx][columns[colIdx]] = (inp.type === 'datetime-local' ? fromLocalInput(inp.value) : inp.value.trim());
   } else {
     rows[origIdx][columns[colIdx]] = (td.textContent || '').trim();
   }
@@ -1045,6 +1143,7 @@ flowConvertBtn.addEventListener('click', async () => {
 
     // 刷新数据表列表
     await loadTables();
+    await loadFormOptions();  // flow 变化后刷新产品/步骤下拉
     await refreshFlowFiles();
     flowConvertBtn.disabled = false;
     setStatus('导入完成');
@@ -1058,6 +1157,7 @@ flowConvertBtn.addEventListener('click', async () => {
 
 // Init
 refreshFlowFiles();
+loadFormOptions();
 loadTables();
 
 // ── 算法配置面板 ──

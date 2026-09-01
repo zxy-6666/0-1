@@ -1,5 +1,5 @@
-lot_name	carrier_id	product_name	qty	priority	step_name	target_step	lot_state	running_time	start_time
-PC1	PFME0307	A005-P1	1	1-1	A005-P1-FC-DUMMY		wait	0	2026/8/17 8:30
-real1	PFME0408	A005-MA	2	3-1	A005-R1-AB1IQC-WFS		wait	0	2026/8/17 8:30
-real2	PFME0405	A005-MA	3	3-1	A005-R1-AB1IQC-WFS		wait	0	2026/8/18 8:30
-PC2	PFME0401	A005-P1	1	1-1	A005-P1-FC-DUMMY		wait	0	2026/8/18 8:30
+lot_name	product_name	qty	priority	step_name	target_step	lot_state	running_time	start_time
+PC1	A005-P1	1	1-1	A005-P1-FC-DUMMY		wait	0	2026/8/17 8:30
+real1	A005-MA	2	3-1	A005-R1-AB1IQC-WFS		wait	0	2026/8/17 8:30
+real2	A005-MA	3	3-1	A005-R1-AB1IQC-WFS		wait	0	2026/8/18 8:30
+PC2	A005-P1	1	1-1	A005-P1-FC-DUMMY		wait	0	2026/8/18 8:30
