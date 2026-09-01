@@ -165,10 +165,14 @@ def schedule_optimized(
     sorted_names = [l.lot_name for l in sorted(lots, key=lambda l: (l.priority, l.lot_name))]
     priority_rank = {name: i for i, name in enumerate(sorted_names)}
 
+    # Q-time 安全余量（与调度器默认一致）：收益参考点与得分罚分共用
+    _qm_safety_pct = 20.0 if qtight_safety_margin is None else float(qtight_safety_margin)
+    _qm_min_min = 30.0 if qtight_min_margin is None else float(qtight_min_margin)
+
     best = None
-    best_score = None          # penal_score：合法=真实 score，非法=罚分（BASE+…）
+    best_score = None          # 合法=加权完工时间+安全余量缺口罚分，非法=罚分（BASE+…）
     best_valid = False         # best 是否为完全合法解
-    best_margin = None         # 同分时用 Q-time 余量比率（越大越好）做次目标
+    best_margin = None         # 同分时用 Q-time 余量收益（越大越好）做次目标
     best_meta = None
     valid_iterations = 0
 
@@ -232,11 +236,17 @@ def schedule_optimized(
         if not errors:
             valid_iterations += 1
             obj = compute_objective(le, iter_lots, schedule_start, weight_by_priority,
-                                    qtimes=qtimes)
-            penal = obj["score"]           # 合法解：罚分 = 真实 score
+                                    qtimes=qtimes,
+                                    qtime_safety_margin_pct=_qm_safety_pct,
+                                    qtime_min_margin_min=_qm_min_min)
+            # 合法解得分 = 加权完工时间 + 安全余量缺口（分钟）：余量低于用户设置的
+            # 安全余量时，缺多少分钟按多少分钟计入得分，驱动搜索把每条链抬到安全
+            # 余量之上；余量达标后不再额外罚分，主目标仍以完工时间为主。
+            margin_shortfall = obj.get("qtime_margin_shortfall", 0.0) or 0.0
+            penal = obj["score"] + margin_shortfall
             is_valid = True
-            # 次目标改用"归一化余量比率"的非线性收益：余量充足时几乎同等，
-            # 越接近耗尽差异越明显（用户规则），引导搜索优先保住濒危 Q 段。
+            # 次目标改用"相对安全余量的非线性收益"：低于安全余量断崖下降，
+            # 达到安全余量收益 0.2，往上渐近饱和（用户规则），同分时区分优劣。
             margin = obj.get("min_qtime_margin_benefit")
             margin_ratio = obj.get("min_qtime_margin_ratio")
             err_list = []
@@ -331,7 +341,9 @@ def schedule_optimized(
                                "min_qtime_margin_ratio": None},
                         rle, ree, rqa)
             obj = compute_objective(rle, eval_lots, schedule_start, weight_by_priority,
-                                    qtimes=qtimes)
+                                    qtimes=qtimes,
+                                    qtime_safety_margin_pct=_qm_safety_pct,
+                                    qtime_min_margin_min=_qm_min_min)
             return (errs, obj, rle, ree, rqa)
 
         def _better(a_score, a_margin, b_score, b_margin):
@@ -424,7 +436,8 @@ def schedule_optimized(
                 T *= alpha
                 continue
             _errs, _obj, _nle, _nee, _nqa = res
-            nb_score = _obj["score"]
+            # 与主循环一致：得分 = 加权完工时间 + 安全余量缺口罚分
+            nb_score = _obj["score"] + (_obj.get("qtime_margin_shortfall", 0.0) or 0.0)
             nb_margin = _obj.get("min_qtime_margin_benefit")  # 非线性收益（越大越好）
             # delta 与"当前解"比较（SA 退火基准）：当前解漂移后仍能正常比较，
             # 避免旧版"与历史最优比"导致的温控失真/搜索瘫痪。
@@ -463,7 +476,7 @@ def schedule_optimized(
                     best_ref_le, best_ref_ee, best_ref_qa = _nle, _nee, _nqa
                     best_ref_meta = {"iter": 10000 + _t_iters, "lot_order": nb_lo,
                                      "eqp_prefs": nb_ep, "chain_placement": nb_ch,
-                                     "score": nb_score,
+                                     "score": _obj["score"],
                                      "min_qtime_margin": _obj.get("min_qtime_margin"),
                                      "min_qtime_margin_ratio": _obj.get("min_qtime_margin_ratio"),
                                      "completion_times": _obj.get("completion_times"),

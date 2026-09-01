@@ -300,19 +300,23 @@ def _qtime_margins_from_entries(
     return margins
 
 
-def _qtime_margin_benefit(ratio: float) -> float:
+def _qtime_margin_benefit(rel: float) -> float:
     """Q-time 余量收益（非线性，越大越好，返回 [0,1]）。
 
-    用户规则：剩余余量作为目标不能完全线性——余量充足时（≥40%）几乎同等，
-    但越接近耗尽差异越明显（40% > 30% > 20%，且差距递增），
-    引导搜索优先保住"快要耗尽"的 Q 段，而不是为把 60% 推到 90% 牺牲完工时间。
-      - ratio ≥ 0.4（饱和区）：0.96~1.0 仅保留微小坡度（几乎同等）；
-      - ratio < 0.4（稀缺区）：缺口占比的平方放大（余量减半，收益损失 4 倍）。
+    用户规则（2026-09-02 修订）：收益以"用户设置的 Q-time 安全余量"为参考点，
+      safe = max(预算 D × 安全余量%, 安全余量下限)，rel = 实际余量 / safe：
+      - rel ≥ 1（余量达到安全余量）: 收益 0.2 → 1.0 线性回升，2 倍安全余量处饱和
+        （"余量足够多 ≈ 同等收益"）；
+      - rel < 1（余量低于安全余量）: 收益 = 0.2 × rel² 平方衰减，缺口越大收益损失
+        越剧烈（rel=0.5 → 0.05，rel=0.25 → 0.0125，接近耗尽 → 0）；
+      - 恰好在安全余量点（rel=1）收益 = 0.2。
+    效果：低于安全余量收益断崖式下降；达到安全余量才有 0.2；再往上渐近饱和。
     """
-    if ratio >= 0.4:
-        return 0.96 + 0.04 * (ratio - 0.4) / 0.6
-    d = (0.4 - ratio) / 0.4
-    return 0.96 * (1.0 - d * d)
+    if rel <= 0:
+        return 0.0
+    if rel < 1.0:
+        return 0.2 * rel * rel
+    return min(1.0, 0.2 + 0.8 * (rel - 1.0))
 
 
 def compute_objective(
@@ -321,6 +325,8 @@ def compute_objective(
     schedule_start: datetime,
     weight_by_priority: bool = True,
     qtimes: Optional[list[QTimeConstraint]] = None,
+    qtime_safety_margin_pct: float = 20.0,
+    qtime_min_margin_min: float = 30.0,
 ) -> dict:
     """计算目标函数。
 
@@ -331,6 +337,10 @@ def compute_objective(
           w = 1 + (max_ext_priority - ext_priority)
       - qtime_margins: 每条 Q-time 规则的剩余余量（分钟）；无 Q-time 时为空 dict
       - min_qtime_margin: 全部 Q-time 规则中的最小余量（分钟），无 Q-time 时为 None
+      - min_qtime_margin_ratio: 最小余量 / 该规则预算（窗口占比，用于展示）
+      - min_qtime_margin_benefit: 非线性收益（越小余量收益越低，用于同分次目标）
+      - qtime_margin_shortfall: 安全余量缺口（分钟）= max(0, safe - margin) 的最大值；
+          优化器把它加进得分，引导搜索把每条链余量抬到安全余量之上
       - score: 主目标加权总完工时间（分钟）
     """
     completion: dict[str, datetime] = {}
@@ -364,6 +374,7 @@ def compute_objective(
     min_qtime_margin = None
     min_qtime_margin_ratio = None
     min_qtime_margin_benefit = None
+    qtime_margin_shortfall = 0.0
     if qtimes:
         qtime_margins = _qtime_margins_from_entries(lot_entries, lots, qtimes)
         if qtime_margins:
@@ -373,17 +384,28 @@ def compute_objective(
             # 作为搜索次目标更合理（避免绝对分钟天然偏袒长段）。
             _prod_of = {l.lot_name: l.product_name for l in lots}
             _ratios = []
+            # 收益参考点 = 用户安全余量：safe = max(预算 × %, 下限)。
+            # rel = margin / safe，在安全余量点收益恰为 0.2，低于则平方衰减。
+            _rels = []
+            # 安全余量缺口（分钟）：引导优化器把每条链抬到安全余量之上。
+            _shortfall_max = 0.0
             for (ln, qs, qe), m in qtime_margins.items():
                 for q in qtimes:
                     if (q.product_name == _prod_of.get(ln)
                             and q.start_step == qs and q.end_step == qe
                             and q.max_duration and q.max_duration > 0):
                         _ratios.append(m / float(q.max_duration))
+                        safe = max(q.max_duration * qtime_safety_margin_pct / 100.0,
+                                   qtime_min_margin_min)
+                        _rels.append(m / safe if safe > 0 else 1.0)
+                        if m < safe:
+                            _shortfall_max = max(_shortfall_max, safe - m)
                         break
-            if _ratios:
+            if _rels:
                 min_qtime_margin_ratio = min(_ratios)
-                # 非线性收益：余量充足时几乎同等，越接近耗尽差异越明显
-                min_qtime_margin_benefit = _qtime_margin_benefit(min_qtime_margin_ratio)
+                # 非线性收益：低于安全余量断崖下降，达到安全余量 0.2，往上渐近饱和
+                min_qtime_margin_benefit = min(_qtime_margin_benefit(r) for r in _rels)
+                qtime_margin_shortfall = _shortfall_max
 
     score = weighted_total
 
@@ -397,4 +419,5 @@ def compute_objective(
         "min_qtime_margin": min_qtime_margin,
         "min_qtime_margin_ratio": min_qtime_margin_ratio,
         "min_qtime_margin_benefit": min_qtime_margin_benefit,
+        "qtime_margin_shortfall": qtime_margin_shortfall,
     }
