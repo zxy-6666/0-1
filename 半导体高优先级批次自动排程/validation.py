@@ -327,6 +327,7 @@ def compute_objective(
     qtimes: Optional[list[QTimeConstraint]] = None,
     qtime_safety_margin_pct: float = 20.0,
     qtime_min_margin_min: float = 30.0,
+    qtime_shortfall_gradient: float = 3.0,
 ) -> dict:
     """计算目标函数。
 
@@ -339,8 +340,9 @@ def compute_objective(
       - min_qtime_margin: 全部 Q-time 规则中的最小余量（分钟），无 Q-time 时为 None
       - min_qtime_margin_ratio: 最小余量 / 该规则预算（窗口占比，用于展示）
       - min_qtime_margin_benefit: 非线性收益（越小余量收益越低，用于同分次目标）
-      - qtime_margin_shortfall: 安全余量缺口（分钟）= max(0, safe - margin) 的最大值；
-          优化器把它加进得分，引导搜索把每条链余量抬到安全余量之上
+      - qtime_margin_shortfall: 安全余量缺口（分钟）= max(0, safe - margin) 的最大值
+      - qtime_margin_penalty: 梯度罚分（分钟）= gradient × (shortfall + shortfall²/(2×safe))，
+          缺口越深单分钟罚分越高；优化器把它加进得分，引导搜索把每条链余量抬到安全余量之上
       - score: 主目标加权总完工时间（分钟）
     """
     completion: dict[str, datetime] = {}
@@ -375,6 +377,7 @@ def compute_objective(
     min_qtime_margin_ratio = None
     min_qtime_margin_benefit = None
     qtime_margin_shortfall = 0.0
+    qtime_margin_penalty = 0.0
     if qtimes:
         qtime_margins = _qtime_margins_from_entries(lot_entries, lots, qtimes)
         if qtime_margins:
@@ -387,8 +390,9 @@ def compute_objective(
             # 收益参考点 = 用户安全余量：safe = max(预算 × %, 下限)。
             # rel = margin / safe，在安全余量点收益恰为 0.2，低于则平方衰减。
             _rels = []
-            # 安全余量缺口（分钟）：引导优化器把每条链抬到安全余量之上。
+            # 安全余量缺口（分钟）及其所在链的 safe：用于梯度罚分（越深单分钟罚分越高）。
             _shortfall_max = 0.0
+            _safe_at_max = 0.0
             for (ln, qs, qe), m in qtime_margins.items():
                 for q in qtimes:
                     if (q.product_name == _prod_of.get(ln)
@@ -398,14 +402,21 @@ def compute_objective(
                         safe = max(q.max_duration * qtime_safety_margin_pct / 100.0,
                                    qtime_min_margin_min)
                         _rels.append(m / safe if safe > 0 else 1.0)
-                        if m < safe:
-                            _shortfall_max = max(_shortfall_max, safe - m)
+                        if m < safe and (safe - m) > _shortfall_max:
+                            _shortfall_max = safe - m
+                            _safe_at_max = safe
                         break
             if _rels:
                 min_qtime_margin_ratio = min(_ratios)
                 # 非线性收益：低于安全余量断崖下降，达到安全余量 0.2，往上渐近饱和
                 min_qtime_margin_benefit = min(_qtime_margin_benefit(r) for r in _rels)
                 qtime_margin_shortfall = _shortfall_max
+                # 梯度罚分：缺 1 分钟按 gradient 分起步，越接近耗尽单分钟罚分越高
+                # （单分钟罚分 = gradient × (1 + 缺口/safe)，0 余量时为 2×gradient）。
+                if _shortfall_max > 0 and _safe_at_max > 0:
+                    qtime_margin_penalty = qtime_shortfall_gradient * (
+                        _shortfall_max
+                        + _shortfall_max * _shortfall_max / (2.0 * _safe_at_max))
 
     score = weighted_total
 
@@ -420,4 +431,5 @@ def compute_objective(
         "min_qtime_margin_ratio": min_qtime_margin_ratio,
         "min_qtime_margin_benefit": min_qtime_margin_benefit,
         "qtime_margin_shortfall": qtime_margin_shortfall,
+        "qtime_margin_penalty": qtime_margin_penalty,
     }

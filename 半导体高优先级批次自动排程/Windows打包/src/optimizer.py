@@ -141,6 +141,7 @@ def schedule_optimized(
     tight_chain_threshold: int = None,
     qtight_safety_margin: float = None,   # 紧 Q-time 安全余量（百分比 0-100，默认 20%）
     qtight_min_margin: float = None,      # 紧 Q-time 安全余量下限（分钟，默认 30）
+    qtime_shortfall_gradient: float = None,  # 安全余量缺口罚分梯度（默认 3）
     chain_wait_safety: int = None,
     cross_shift_avoid: bool = None,
     batch_wait_window: int = None,        # 恒组批等待凑批窗口（分钟，默认 240）
@@ -168,6 +169,8 @@ def schedule_optimized(
     # Q-time 安全余量（与调度器默认一致）：收益参考点与得分罚分共用
     _qm_safety_pct = 20.0 if qtight_safety_margin is None else float(qtight_safety_margin)
     _qm_min_min = 30.0 if qtight_min_margin is None else float(qtight_min_margin)
+    # 安全余量缺口罚分梯度（缺口越深单分钟罚分越高）
+    _qm_grad = 3.0 if qtime_shortfall_gradient is None else float(qtime_shortfall_gradient)
 
     best = None
     best_score = None          # 合法=加权完工时间+安全余量缺口罚分，非法=罚分（BASE+…）
@@ -238,12 +241,12 @@ def schedule_optimized(
             obj = compute_objective(le, iter_lots, schedule_start, weight_by_priority,
                                     qtimes=qtimes,
                                     qtime_safety_margin_pct=_qm_safety_pct,
-                                    qtime_min_margin_min=_qm_min_min)
-            # 合法解得分 = 加权完工时间 + 安全余量缺口（分钟）：余量低于用户设置的
-            # 安全余量时，缺多少分钟按多少分钟计入得分，驱动搜索把每条链抬到安全
-            # 余量之上；余量达标后不再额外罚分，主目标仍以完工时间为主。
-            margin_shortfall = obj.get("qtime_margin_shortfall", 0.0) or 0.0
-            penal = obj["score"] + margin_shortfall
+                                    qtime_min_margin_min=_qm_min_min,
+                                    qtime_shortfall_gradient=_qm_grad)
+            # 合法解得分 = 加权完工时间 + 安全余量缺口梯度罚分（分钟）：余量低于用户设置的
+            # 安全余量时按梯度扣分（缺口越深单分钟罚分越高，见 compute_objective），驱动搜索
+            # 把每条链抬到安全余量之上；余量达标后不再额外罚分，主目标仍以完工时间为主。
+            penal = obj["score"] + (obj.get("qtime_margin_penalty", 0.0) or 0.0)
             is_valid = True
             # 次目标改用"相对安全余量的非线性收益"：低于安全余量断崖下降，
             # 达到安全余量收益 0.2，往上渐近饱和（用户规则），同分时区分优劣。
@@ -343,7 +346,8 @@ def schedule_optimized(
             obj = compute_objective(rle, eval_lots, schedule_start, weight_by_priority,
                                     qtimes=qtimes,
                                     qtime_safety_margin_pct=_qm_safety_pct,
-                                    qtime_min_margin_min=_qm_min_min)
+                                    qtime_min_margin_min=_qm_min_min,
+                                    qtime_shortfall_gradient=_qm_grad)
             return (errs, obj, rle, ree, rqa)
 
         def _better(a_score, a_margin, b_score, b_margin):
@@ -436,8 +440,8 @@ def schedule_optimized(
                 T *= alpha
                 continue
             _errs, _obj, _nle, _nee, _nqa = res
-            # 与主循环一致：得分 = 加权完工时间 + 安全余量缺口罚分
-            nb_score = _obj["score"] + (_obj.get("qtime_margin_shortfall", 0.0) or 0.0)
+            # 与主循环一致：得分 = 加权完工时间 + 安全余量缺口梯度罚分
+            nb_score = _obj["score"] + (_obj.get("qtime_margin_penalty", 0.0) or 0.0)
             nb_margin = _obj.get("min_qtime_margin_benefit")  # 非线性收益（越大越好）
             # delta 与"当前解"比较（SA 退火基准）：当前解漂移后仍能正常比较，
             # 避免旧版"与历史最优比"导致的温控失真/搜索瘫痪。

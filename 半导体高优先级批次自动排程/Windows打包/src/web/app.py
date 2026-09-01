@@ -296,6 +296,7 @@ def _run_schedule(seed: int, req_body: dict, export_excel: bool = True):
         tight_chain_threshold = _cfg.get("tight_chain_threshold")
         qtight_safety_margin = _cfg.get("qtight_safety_margin")
         qtight_min_margin = _cfg.get("qtight_min_margin")
+        qtime_shortfall_gradient = _cfg.get("qtime_shortfall_gradient")
         chain_wait_safety = _cfg.get("chain_wait_safety")
         cross_shift_avoid = _cfg.get("cross_shift_avoid")
         if cross_shift_avoid is None:
@@ -331,6 +332,7 @@ def _run_schedule(seed: int, req_body: dict, export_excel: bool = True):
             tight_chain_threshold=tight_chain_threshold,
             qtight_safety_margin=qtight_safety_margin,
             qtight_min_margin=qtight_min_margin,
+            qtime_shortfall_gradient=qtime_shortfall_gradient,
             chain_wait_safety=chain_wait_safety,
             cross_shift_avoid=cross_shift_avoid,
             batch_wait_window=batch_wait_window,
