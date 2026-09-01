@@ -818,6 +818,134 @@ def test_30_manual_adjust_nonchain_step_isolated():
     return []
 
 
+# ------------------------------------------------------------
+# 针对 test_28 根因的复杂压力用例：
+#   根因 = 调度器 Q 段预算守卫仅覆盖"相邻步骤 + track in→track out"，
+#   无法处理 非相邻跨度（BAKE→DISPENSE 1440）与 混合 Q 模型
+#   （PLASMA→DISPENSE track out→out 240 / DISPENSE→CURE track out→in 240）。
+#   新用例专门压测"任意跨度 × 任意 Q 模型"守卫 + 多步骤手动钉晚。
+#   采用单 Lot（剔除跨 lot 设备挤兑）聚焦验证守卫本身；这些用例在旧的
+#   相邻-only 守卫下必然失败，在推广守卫后通过。
+# ------------------------------------------------------------
+
+def _solo_pc2_schedule(manual_adjusts):
+    """仅保留 PC2 单 lot 全流程调度（去掉跨 lot reference），直接验证手动钉晚
+    下链内任意跨度/混合 Q 模型的守卫。返回 (errors, le, ee, qa)。"""
+    from models import ManualAdjust, Lot
+    from datetime import datetime
+    from data_loader import load_shift_config
+    from scheduler import schedule
+    from validation import validate_schedule
+    data = load_base_data()
+    pc2 = [l for l in data["lots"] if l.lot_name == "PC2"]
+    if not pc2:
+        return ["基数据缺少 PC2"], None, None, None
+    solo = copy.deepcopy(pc2[0])
+    solo.references = []  # 剔除跨 lot 依赖，聚焦链内守卫
+    flow = [s for s in data["flow_map"].get("A005-P1", [])]
+    solo_qtimes = [q for q in data["qtimes"] if q.product_name == "A005-P1"]
+    shift_config = load_shift_config(os.path.join(os.path.dirname(__file__), "data", "shift_config.csv"))
+    shift_times = sorted(tuple(map(int, sc.start_time_str.split(":")))
+                         for sc in shift_config if getattr(sc, "start_time_str", None))
+    le, ee, qa = schedule(
+        lots=[solo], flows=flow, ct_lookup=data["ct_lookup"], qtimes=solo_qtimes,
+        shift_times=shift_times, ftf_qty_change=None,
+        special_lot_step_lookup=data["special_lot_step"],
+        priority_wait_map=data["priority_wait"], eqp_constraints=data["eqp_constraints"],
+        step_time_window_constraints=data["step_time_windows"],
+        shift_change_times=data["shift_change"], manual_adjusts=manual_adjusts,
+        special_eqp_map={}, resolve_max_iterations=10)
+    errors = validate_schedule(le, ee, qa, [solo], flow, solo_qtimes)
+    return errors, le, ee, qa
+
+
+def test_33_manual_adjust_nonadjacent_span_guard():
+    """非相邻跨度 Q 守卫：手动把链尾前置 DISPENSE 钉晚，BAKE→DISPENSE(1440,
+    track out→track in, 跨 BAKE/PLASMA/DISPENSE 两步) 必须由守卫把链首收拢，
+    保持 ≤1440；同时相邻 DISPENSE→CURE(240, track out→track in) 也须守住。"""
+    from models import ManualAdjust
+    from datetime import datetime as _dt
+    # 钉得足够晚，使 BAKE→DISPENSE(1440) 在**不做非相邻守卫**时必然超限；
+    # 且 DISPENSE 一旦被钉晚，相邻 PLASMA→DISPENSE / DISPENSE→CURE 也会被挤，
+    # 整链必须整体后移才能全部收进预算 → 新旧守卫差异可测。
+    manual = [ManualAdjust(lot_name="PC2", step_name="A005-P1-UF-DISPENSE",
+                           delay_to=_dt(2026, 8, 20, 12, 30))]
+    errors, le, ee, qa = _solo_pc2_schedule(manual)
+    return errors[:20] if errors else []
+
+
+def test_34_manual_adjust_mixed_model_q_guard():
+    """混合 Q 模型守卫：手动把链中 PLASMA 钉得足够晚，使相邻 track out→track out
+    PLASMA→DISPENSE(240)、相邻 track out→track in DISPENSE→CURE(240) 与非相邻
+    BAKE→DISPENSE(1440) 全部逼近预算，旧守卫（仅相邻+track in→out）必然漏守。"""
+    from models import ManualAdjust
+    from datetime import datetime as _dt
+    manual = [ManualAdjust(lot_name="PC2", step_name="A005-P1-UF-PLASMA",
+                           delay_to=_dt(2026, 8, 20, 11, 30))]
+    errors, le, ee, qa = _solo_pc2_schedule(manual)
+    return errors[:20] if errors else []
+
+
+def test_35_manual_adjust_multi_pin_same_chain():
+    """同 chain 多步钉晚：链内 BAKE 与 DISPENSE 同时手动钉晚，多约束叠加下
+    守卫须把整链各 Q 段（含非相邻 BAKE→DISPENSE）同时收在预算内，且手动钉晚被尊重。"""
+    from models import ManualAdjust
+    from datetime import datetime as _dt
+    manual = [
+        ManualAdjust(lot_name="PC2", step_name="A005-P1-UF-BAKE",
+                     delay_to=_dt(2026, 8, 19, 12, 0)),
+        ManualAdjust(lot_name="PC2", step_name="A005-P1-UF-DISPENSE",
+                     delay_to=_dt(2026, 8, 20, 12, 30)),
+    ]
+    errors, le, ee, qa = _solo_pc2_schedule(manual)
+    if errors:
+        return errors[:20]
+    # 手动钉晚必须被尊重（≥ delay_to）
+    from datetime import datetime
+    for e in le:
+        if e.lot_name == "PC2" and e.step_name == "A005-P1-UF-BAKE" and e.start_time < _dt(2026, 8, 19, 12, 0):
+            return ["手动调整未尊重 delay_to: BAKE 早于 2026-08-19 12:00"]
+        if e.lot_name == "PC2" and e.step_name == "A005-P1-UF-DISPENSE" and e.start_time < _dt(2026, 8, 20, 12, 30):
+            return ["手动调整未尊重 delay_to: DISPENSE 早于 2026-08-20 12:30"]
+    return []
+
+
+def test_36_manual_adjust_multilot_concurrent_guard():
+    """多批次并发压力：PC1 与 PC2 两条 A005-P1 链**同时**手动钉晚（DISPENSE），
+    与 real1/real2(A005-MA) 共抢 DISPENSE/PLASMA/BAKE 等设备，制造设备竞争。
+    验证推广后的任意跨度 Q 段守卫在多批次挤兑下，仍能把各链的
+    BAKE→DISPENSE(1440)、PLASMA→DISPENSE(240)、DISPENSE→CURE(240)
+    全部收进预算，且手动钉晚被尊重。"""
+    from models import ManualAdjust
+    from datetime import datetime as _dt
+    from validation import validate_schedule
+    data = load_base_data()
+    # 两批同时钉晚到中等偏晚时刻 → 必须拉动整链 + 与其他批争抢设备
+    manual = [
+        ManualAdjust(lot_name="PC1", step_name="A005-P1-UF-DISPENSE",
+                     delay_to=_dt(2026, 8, 19, 14, 0)),
+        ManualAdjust(lot_name="PC2", step_name="A005-P1-UF-DISPENSE",
+                     delay_to=_dt(2026, 8, 20, 9, 0)),
+    ]
+    le, ee, qa, meta = run_schedule_optimized_manual(data, manual, max_iterations=60, seed=0)
+    errors = validate_schedule(
+        le, ee, qa, data["lots"],
+        [s for fl in data["flow_map"].values() for s in fl],
+        data["qtimes"], lot_constraints=data["lot_constraints"],
+        special_eqp_map=_load_special_eqp())
+    if errors:
+        return errors[:20]
+    # 手动钉晚必须被尊重
+    for e in le:
+        if e.lot_name == "PC1" and e.step_name == "A005-P1-UF-DISPENSE" \
+                and e.start_time < _dt(2026, 8, 19, 14, 0):
+            return ["手动调整未尊重 delay_to: PC1.DISPENSE 早于 14:00"]
+        if e.lot_name == "PC2" and e.step_name == "A005-P1-UF-DISPENSE" \
+                and e.start_time < _dt(2026, 8, 20, 9, 0):
+            return ["手动调整未尊重 delay_to: PC2.DISPENSE 早于 09:00"]
+    return []
+
+
 # ============================================================
 # PKPOV001 恒组批（together=true）稳定性压力测试
 # ============================================================
@@ -967,6 +1095,10 @@ if __name__ == "__main__":
         ("28_manual_adjust_reschedule", test_28_manual_adjust_reschedule),
         ("29_manual_adjust_chain_midstep_recompact", test_29_manual_adjust_chain_midstep_recompact),
         ("30_manual_adjust_nonchain_step_isolated", test_30_manual_adjust_nonchain_step_isolated),
+        ("33_manual_adjust_nonadjacent_span_guard", test_33_manual_adjust_nonadjacent_span_guard),
+        ("34_manual_adjust_mixed_model_q_guard", test_34_manual_adjust_mixed_model_q_guard),
+        ("35_manual_adjust_multi_pin_same_chain", test_35_manual_adjust_multi_pin_same_chain),
+        ("36_manual_adjust_multilot_concurrent_guard", test_36_manual_adjust_multilot_concurrent_guard),
         ("31_special_eqp_pkpov001_stability", test_31_special_eqp_pkpov001_stability),
         ("32_special_eqp_pkpov001_no_hang_without_special", test_32_special_eqp_pkpov001_no_hang_without_special),
     ]
