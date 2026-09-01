@@ -310,7 +310,7 @@ def schedule_optimized(
                          / max(refine_max_iterations - 1, 1))
         T = max(sa_temperature_start, 1e-9)
         tabu: dict[str, int] = {}
-        op_names = ["order_swap", "order_shuffle", "eqp_swap", "eqp_shuffle"]
+        op_names = ["order_swap", "order_shuffle", "eqp_swap", "eqp_shuffle", "chain_toggle"]
         op_weights = {n: 1.0 / len(op_names) for n in op_names}
         op_contrib = {n: [] for n in op_names}
         op_used = {n: 0 for n in op_names}

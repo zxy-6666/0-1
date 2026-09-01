@@ -3361,7 +3361,36 @@ def _coarse_earliest_anchors(
                         bk = pos[k + 1] - timedelta(minutes=cts[k] + waits[k])
                         if bk > pos[k]:
                             pos[k] = bk
-                # 4) 再次正向顺延：被压实步骤可能顶动其后步骤
+                # 3.5) Q 段预算守卫：反向压实紧段步骤 k 可能把其前的非紧段 Q 撑破
+                #    （例：PLASMA 因 lead 对齐被拉晚、BAKE 保持早锚点 → BAKE→PLASMA
+                #     480min 非紧 Q 超限）。对相邻步骤对（k-1,k）若有 Q 约束，则把
+                #    报告步骤（k-1，链内更早者）整体后移以满足预算；后移只缩小该段，
+                #    若因此撑破更前段则向链首逐级传播（链首无前导，吸收位移）。
+                #    仅在真实超预算时触发、位移受预算界约束，不会引发雪崩。
+                #    逐级回扫（从链尾向链首）：后移 pos[k-1] 后，其更前段在后续迭代
+                #    中被复查，自然向链首级联；紧段（背靠背压实后）已满足预算，为 no-op。
+                for _seg_k in range(n - 1, 0, -1):
+                    _sm = _em = None
+                    _seg_budget = None
+                    for _q0 in (qtimes or []):
+                        if _q0.product_name != lot.product_name or _q0.max_duration is None:
+                            continue
+                        if (lot_flow[cur_idx + s_rel + _seg_k - 1].step_name == _q0.start_step
+                                and lot_flow[cur_idx + s_rel + _seg_k].step_name == _q0.end_step):
+                            _seg_budget = float(_q0.max_duration)
+                            _sm = (_q0.start_mod or "track in").strip()
+                            _em = (_q0.end_mod or "track out").strip()
+                            break
+                    if _seg_budget is None:
+                        continue
+                    if _sm == "track in" and _em == "track out":
+                        # track in → track out：预算覆盖 起点 start → 终点 end（含两端 CT），
+                        # 需 pos[k-1] >= pos[k] + ct[k] - _seg_budget
+                        _lo = (pos[_seg_k] + timedelta(minutes=cts[_seg_k])
+                               - timedelta(minutes=_seg_budget))
+                        if pos[_seg_k - 1] < _lo:
+                            pos[_seg_k - 1] = _lo
+                # 4) 再次正向顺延：被压实/后移步骤可能顶动其后步骤
                 for k in range(1, n):
                     need = pos[k - 1] + timedelta(minutes=cts[k - 1] + waits[k - 1])
                     if pos[k] < need:

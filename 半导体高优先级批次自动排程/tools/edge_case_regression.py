@@ -23,7 +23,9 @@ from models import Lot, LotConstraint, ManualAdjust
 from optimizer import schedule_optimized
 from validation import validate_schedule
 
-REPRO = "/tmp/repro_iou"
+# R 上下文使用仓库内 data/（含 A006/A007 全套流程）。曾用 /tmp/repro_iou 副本，
+# 沙箱重启即被清空导致 R 场景全部空排程——改为仓库稳定路径，避免依赖易失目录。
+REPRO = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data"))
 TOOLS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 BASE = datetime(2026, 9, 1, 9, 30)
 
