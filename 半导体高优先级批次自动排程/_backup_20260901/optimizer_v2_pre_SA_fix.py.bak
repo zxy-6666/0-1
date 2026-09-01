@@ -22,25 +22,10 @@ from __future__ import annotations
 
 import copy
 import random
-import re
 from datetime import datetime
 
 from scheduler import schedule
 from validation import validate_schedule, compute_objective
-
-# 从校验错误文本中解析 Q-time 超时量（用于非法解严重度比较）
-_Q_OVER_RE = re.compile(r"用时 ([0-9.]+)min > 限制 ([0-9.]+)min")
-
-
-def _violation_severity(errors: list[str]) -> float:
-    """非法解的违规严重度 = 全部 Q-time 超时分钟数之和（无超时错误则为 0）。
-    作为兜底解的第二排序键：同错误数时选总超时量更小的解。"""
-    over = 0.0
-    for e in errors:
-        m = _Q_OVER_RE.search(e)
-        if m:
-            over += max(float(m.group(1)) - float(m.group(2)), 0.0)
-    return over
 
 
 def _weighted_shuffle(names: list[str], rng: random.Random,
@@ -120,8 +105,7 @@ def schedule_optimized(
     seed: int = 0,
     weight_by_priority: bool = True,
     verbose: bool = False,
-    early_stop_patience: int = 15,   # 外层：连续 N 轮合法解无改进即收敛（0=关闭）
-    refine_patience: int = 20,       # 细调层：best 连续 N 轮无改进即收敛（0=关闭）
+    early_stop_patience: int = 0,
     # ---- 算法旋钮（None 使用调度器默认） ----
     tight_chain_threshold: int = None,
     qtight_safety_margin: float = None,   # 紧 Q-time 安全余量（百分比 0-100，默认 20%）
@@ -155,7 +139,6 @@ def schedule_optimized(
     valid_iterations = 0
     best_violating = None
     best_violating_count = None
-    best_violating_sev = None  # 同错误数时的违规严重度（总超时分钟）
     best_violating_meta = {"iter": None, "errors": []}
 
     # schedule_start 由 schedule() 内部计算，这里用 min start_time 近似打分基准
@@ -164,7 +147,6 @@ def schedule_optimized(
 
     no_improve = 0  # 连续无改进轮数（自适应早停）
     iters_done = 0
-    outer_early_stop = False  # 外层是否因收敛提前终止
 
     for it in range(max_iterations):
         iters_done = it + 1
@@ -251,23 +233,16 @@ def schedule_optimized(
             else:
                 no_improve += 1
         else:
-            # 记录违规最少的解（兜底）：先按错误数，再按违规严重度（总超时分钟）
-            # 单调收敛——同错误数时持续替换为超时总量更小的解，避免"越迭代越差"。
-            v_sev = _violation_severity(errors)
-            if (best_violating is None
-                    or len(errors) < best_violating_count
-                    or (len(errors) == best_violating_count and v_sev < best_violating_sev)):
+            # 记录违规最少的解（兜底）
+            if best_violating is None or len(errors) < best_violating_count:
                 best_violating = (le, ee, qa)
                 best_violating_count = len(errors)
-                best_violating_sev = v_sev
                 best_violating_meta = {"iter": it, "errors": list(errors),
-                                       "severity": v_sev,
                                        "schedule_warnings": list(iter_warnings)}
 
         # 自适应早停：已得合法解后连续 N 轮无改进则提前终止（0=关闭）
         if (early_stop_patience > 0 and best is not None
                 and no_improve >= early_stop_patience):
-            outer_early_stop = True
             break
 
     # ============================================================
@@ -326,14 +301,10 @@ def schedule_optimized(
         cur_ep = {k: list(v) for k, v in (best_meta.get("eqp_prefs") or {}).items()}
         cur_ch = best_meta.get("chain_placement", "compact")
 
-        cur_obj_score = best_score   # 当前解分值：SA 退火基准（delta 与之比较）
-        cur_margin = best_margin
         best_ref_obj_score = best_score
         best_ref_margin = best_margin
         best_ref_le, best_ref_ee, best_ref_qa = best
         best_ref_meta = dict(best_meta)
-        best_ref_no_improve = 0   # best_ref 连续无改进轮数（细调层收敛）
-        refine_converged = False
 
         alpha = math.exp(math.log(max(sa_temperature_end, 1e-9) / max(sa_temperature_start, 1e-9))
                          / max(refine_max_iterations - 1, 1))
@@ -409,12 +380,10 @@ def schedule_optimized(
                 continue
             nb_score = _obj["score"]
             nb_margin = _obj.get("min_qtime_margin")
-            # delta 与"当前解"比较（SA 退火基准）：当前解漂移后仍能正常比较，
-            # 避免旧版"与历史最优比"导致的温控失真/搜索瘫痪。
-            delta = nb_score - cur_obj_score
-            # 记录算子贡献（对 best 的改进量）
-            if _better(nb_score, nb_margin, best_ref_obj_score, best_ref_margin):
-                op_contrib[op].append(max(best_ref_obj_score - nb_score, 0.0))
+            delta = nb_score - best_ref_obj_score
+            # 记录算子贡献（delta<0 时贡献 = -delta）
+            if delta < 0:
+                op_contrib[op].append(-delta)
 
             accepted = False
             improve = False
@@ -437,8 +406,6 @@ def schedule_optimized(
                 cur_lo = nb_lo
                 cur_ep = nb_ep
                 cur_ch = nb_ch
-                cur_obj_score = nb_score
-                cur_margin = nb_margin
                 if move_id is not None:
                     tabu[move_id] = _t_iters + tabu_tenure
                 if improve:
@@ -450,16 +417,6 @@ def schedule_optimized(
                                      "score": nb_score, "min_qtime_margin": nb_margin,
                                      "completion_times": _obj["completion_times"],
                                      "schedule_warnings": list(iter_warnings)}
-                    best_ref_no_improve = 0
-                else:
-                    best_ref_no_improve += 1
-            else:
-                best_ref_no_improve += 1
-
-            # 细调层收敛：best_ref 连续 refine_patience 轮无改进 → 提前终止
-            if refine_patience > 0 and best_ref_no_improve >= refine_patience:
-                refine_converged = True
-                break
 
             # 清理过期 tabu
             for k in [k for k, v in tabu.items() if v <= _t_iters]:
@@ -512,12 +469,8 @@ def schedule_optimized(
             "total_iterations": iters_done,
             "warning": "未找到完全合法解，已返回违规最少的解",
             "violations": (best_violating_meta or {}).get("errors", []),
-            "violation_severity": best_violating_sev,
             "schedule_warnings": list((best_violating_meta or {}).get("schedule_warnings", [])),
             "seed": seed,
-            "outer_early_stop": outer_early_stop,
-            "refine_converged": False,
-            "no_improve": no_improve,
         }
     else:
         warning = False
@@ -529,9 +482,6 @@ def schedule_optimized(
             "total_iterations": iters_done,
             "warning": None,
             "seed": seed,
-            "outer_early_stop": outer_early_stop,
-            "refine_converged": refine_converged,
-            "no_improve": no_improve,
             **best_meta,
         }
 
