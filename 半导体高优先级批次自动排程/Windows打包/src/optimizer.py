@@ -175,6 +175,7 @@ def schedule_optimized(
     best = None
     best_score = None          # 合法=加权完工时间+安全余量缺口罚分，非法=罚分（BASE+…）
     best_valid = False         # best 是否为完全合法解
+    best_margin_ok = False     # best 是否所有 Q 链余量都 ≥ 各自安全余量（用户硬要求）
     best_margin = None         # 同分时用 Q-time 余量收益（越大越好）做次目标
     best_meta = None
     valid_iterations = 0
@@ -186,6 +187,7 @@ def schedule_optimized(
     no_improve = 0  # 连续无改进轮数（自适应早停）
     iters_done = 0
     outer_early_stop = False  # 外层是否因收敛提前终止
+    refine_converged = False  # 细调层是否因收敛提前终止（refine 关闭时保持 False）
 
     for it in range(max_iterations):
         iters_done = it + 1
@@ -247,6 +249,7 @@ def schedule_optimized(
             # 安全余量时按梯度扣分（缺口越深单分钟罚分越高，见 compute_objective），驱动搜索
             # 把每条链抬到安全余量之上；余量达标后不再额外罚分，主目标仍以完工时间为主。
             penal = obj["score"] + (obj.get("qtime_margin_penalty", 0.0) or 0.0)
+            margin_ok = bool(obj.get("qtime_margin_ok"))  # 所有 Q 链余量 ≥ 安全余量（硬门槛）
             is_valid = True
             # 次目标改用"相对安全余量的非线性收益"：低于安全余量断崖下降，
             # 达到安全余量收益 0.2，往上渐近饱和（用户规则），同分时区分优劣。
@@ -257,15 +260,21 @@ def schedule_optimized(
             # 非法解：软约束罚分（BASE 保证劣于一切合法解；错误数/超时量越小越优）
             penal = _penal_score(errors)
             is_valid = False
+            margin_ok = False
             margin = None
             margin_ratio = None
             obj = None
             err_list = list(errors)
 
-        # 主目标：penal 更小优先；同分（仅都合法）时余量比率更大优先
+        # 主目标（层次化）：先比"是否全部达到安全余量"（用户：余量不足的解不想要，
+        # 永远劣于达标解），同门槛内再比得分，最后同分比余量收益。
         better = False
         if best is None:
             better = True
+        elif margin_ok and not best_margin_ok:
+            better = True
+        elif (not margin_ok) and best_margin_ok:
+            better = False
         elif penal < best_score - 1e-6:
             better = True
         elif abs(penal - best_score) <= 1e-6:
@@ -281,6 +290,7 @@ def schedule_optimized(
             best = (le, ee, qa)
             best_score = penal
             best_valid = is_valid
+            best_margin_ok = margin_ok
             best_margin = margin
             best_meta = {
                 "iter": it, "lot_order": lot_order,
@@ -289,6 +299,7 @@ def schedule_optimized(
                 "score": obj["score"] if obj else None,
                 "min_qtime_margin": (obj or {}).get("min_qtime_margin"),
                 "min_qtime_margin_ratio": margin_ratio,
+                "margin_violations": list((obj or {}).get("qtime_margin_violations") or []),
                 "completion_times": (obj or {}).get("completion_times"),
                 "errors": err_list,
                 "schedule_warnings": list(iter_warnings),
@@ -350,9 +361,13 @@ def schedule_optimized(
                                     qtime_shortfall_gradient=_qm_grad)
             return (errs, obj, rle, ree, rqa)
 
-        def _better(a_score, a_margin, b_score, b_margin):
+        def _better(a_score, a_margin, a_ok, b_score, b_margin, b_ok):
             if b_score is None:
                 return True
+            if a_ok and not b_ok:
+                return True
+            if (not a_ok) and b_ok:
+                return False
             if a_score < b_score - 1e-6:
                 return True
             if abs(a_score - b_score) <= 1e-6:
@@ -369,8 +384,10 @@ def schedule_optimized(
         cur_ch = best_meta.get("chain_placement", "compact")
 
         cur_obj_score = best_score   # 当前解分值：SA 退火基准（delta 与之比较）
+        cur_ok = best_margin_ok      # 当前解是否全部 Q 链余量达标（硬门槛）
         best_ref_obj_score = best_score
         best_ref_margin = best_margin
+        best_ref_margin_ok = best_margin_ok
         best_ref_le, best_ref_ee, best_ref_qa = best
         best_ref_meta = dict(best_meta)
         best_ref_no_improve = 0   # best_ref 连续无改进轮数（细调层收敛）
@@ -443,21 +460,26 @@ def schedule_optimized(
             # 与主循环一致：得分 = 加权完工时间 + 安全余量缺口梯度罚分
             nb_score = _obj["score"] + (_obj.get("qtime_margin_penalty", 0.0) or 0.0)
             nb_margin = _obj.get("min_qtime_margin_benefit")  # 非线性收益（越大越好）
+            nb_ok = bool(_obj.get("qtime_margin_ok"))  # 所有 Q 链余量 ≥ 安全余量
             # delta 与"当前解"比较（SA 退火基准）：当前解漂移后仍能正常比较，
             # 避免旧版"与历史最优比"导致的温控失真/搜索瘫痪。
             delta = nb_score - cur_obj_score
             # 记录算子贡献（对 best 的改进量）
-            if _better(nb_score, nb_margin, best_ref_obj_score, best_ref_margin):
+            if _better(nb_score, nb_margin, nb_ok,
+                       best_ref_obj_score, best_ref_margin, best_ref_margin_ok):
                 op_contrib[op].append(max(best_ref_obj_score - nb_score, 0.0))
 
             accepted = False
             improve = False
             aspiration = False
-            if is_tabu and _better(nb_score, nb_margin, best_ref_obj_score, best_ref_margin):
+            if is_tabu and _better(nb_score, nb_margin, nb_ok,
+                                   best_ref_obj_score, best_ref_margin, best_ref_margin_ok):
                 aspiration = True
-            if delta <= 1e-6:
+            # 硬门槛：从"余量未达标"升到"全部达标"的邻域无条件接受
+            if delta <= 1e-6 or (nb_ok and not cur_ok):
                 accepted = True
-                if _better(nb_score, nb_margin, best_ref_obj_score, best_ref_margin):
+                if _better(nb_score, nb_margin, nb_ok,
+                           best_ref_obj_score, best_ref_margin, best_ref_margin_ok):
                     improve = True
             else:
                 prob = math.exp(-delta / T)
@@ -472,17 +494,20 @@ def schedule_optimized(
                 cur_ep = nb_ep
                 cur_ch = nb_ch
                 cur_obj_score = nb_score
+                cur_ok = nb_ok
                 if move_id is not None:
                     tabu[move_id] = _t_iters + tabu_tenure
                 if improve:
                     best_ref_obj_score = nb_score
                     best_ref_margin = nb_margin
+                    best_ref_margin_ok = nb_ok
                     best_ref_le, best_ref_ee, best_ref_qa = _nle, _nee, _nqa
                     best_ref_meta = {"iter": 10000 + _t_iters, "lot_order": nb_lo,
                                      "eqp_prefs": nb_ep, "chain_placement": nb_ch,
                                      "score": _obj["score"],
                                      "min_qtime_margin": _obj.get("min_qtime_margin"),
                                      "min_qtime_margin_ratio": _obj.get("min_qtime_margin_ratio"),
+                                     "margin_violations": list(_obj.get("qtime_margin_violations") or []),
                                      "completion_times": _obj.get("completion_times"),
                                      "errors": list(_errs),
                                      "schedule_warnings": list(iter_warnings)}
@@ -529,10 +554,12 @@ def schedule_optimized(
                     op_weights[n] = op_weights[n] / tot2
 
         # 采纳细调更好解
-        if _better(best_ref_obj_score, best_ref_margin, best_score, best_margin):
+        if _better(best_ref_obj_score, best_ref_margin, best_ref_margin_ok,
+                   best_score, best_margin, best_margin_ok):
             best = (best_ref_le, best_ref_ee, best_ref_qa)
             best_score = best_ref_obj_score
             best_valid = not best_ref_meta.get("errors")
+            best_margin_ok = best_ref_margin_ok
             best_margin = best_ref_margin
             best_meta = best_ref_meta
 
@@ -571,6 +598,14 @@ def schedule_optimized(
             "no_improve": no_improve,
             **best_meta,
         }
+        # 有合法解但存在余量低于安全余量的链：用户明确不接受这类解（硬门槛），
+        # 返回该解但给出醒目告警，列出具体是哪条链余量不足。
+        if not best_margin_ok:
+            vlist = list(best_meta.get("margin_violations") or [])
+            warn = ("存在余量低于安全余量的 Q 链（未找到全部达标的安全解）："
+                    + ("; ".join(vlist[:10]) if vlist else "见校验错误"))
+            meta["warning"] = warn
+            meta["schedule_warnings"] = list(meta.get("schedule_warnings") or []) + [warn]
 
     meta["weight_by_priority"] = weight_by_priority
     return le, ee, qa, meta

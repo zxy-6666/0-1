@@ -378,6 +378,7 @@ def compute_objective(
     min_qtime_margin_benefit = None
     qtime_margin_shortfall = 0.0
     qtime_margin_penalty = 0.0
+    _violations: list[str] = []
     if qtimes:
         qtime_margins = _qtime_margins_from_entries(lot_entries, lots, qtimes)
         if qtime_margins:
@@ -402,9 +403,12 @@ def compute_objective(
                         safe = max(q.max_duration * qtime_safety_margin_pct / 100.0,
                                    qtime_min_margin_min)
                         _rels.append(m / safe if safe > 0 else 1.0)
-                        if m < safe and (safe - m) > _shortfall_max:
-                            _shortfall_max = safe - m
-                            _safe_at_max = safe
+                        if m < safe:
+                            _violations.append(
+                                f"{ln} {qs}→{qe} 余量{m:.0f}min<安全{safe:.0f}min")
+                            if (safe - m) > _shortfall_max:
+                                _shortfall_max = safe - m
+                                _safe_at_max = safe
                         break
             if _rels:
                 min_qtime_margin_ratio = min(_ratios)
@@ -432,4 +436,6 @@ def compute_objective(
         "min_qtime_margin_benefit": min_qtime_margin_benefit,
         "qtime_margin_shortfall": qtime_margin_shortfall,
         "qtime_margin_penalty": qtime_margin_penalty,
+        "qtime_margin_ok": qtime_margin_shortfall == 0,
+        "qtime_margin_violations": _violations,
     }
