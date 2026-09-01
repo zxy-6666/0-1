@@ -111,9 +111,6 @@ def _add_machine_interval(
 
 
 def _next_shift_after(dt: datetime, shift_times: list[tuple[int, int]]) -> datetime:
-    # 空班次表防护：无班次概念时立即释放（否则 shift_times[0] 越界崩溃）
-    if not shift_times:
-        return dt
     for h, m in shift_times:
         candidate = dt.replace(hour=h, minute=m, second=0, microsecond=0)
         if candidate > dt:
@@ -122,9 +119,6 @@ def _next_shift_after(dt: datetime, shift_times: list[tuple[int, int]]) -> datet
 
 
 def _next_morning_shift(dt: datetime, shift_times: list[tuple[int, int]]) -> datetime:
-    # 空班次表防护：无班次概念时立即释放
-    if not shift_times:
-        return dt
     h, m = shift_times[0]
     candidate = dt.replace(hour=h, minute=m, second=0, microsecond=0)
     if candidate > dt:
@@ -140,30 +134,6 @@ def get_step_wait_time(ext_priority: int, int_priority: int,
             val = priority_wait_map[key]
             return val if val is not None and val > 0 else 0
     return 10
-
-
-def _reorder_eqp_ids_by_preference(
-    eqp_ids: list[str],
-    lot_name: str,
-    step_name: str,
-    eqp_preferences: Optional[dict[tuple[str, str], list[str]]],
-) -> list[str]:
-    """按 GA 设备偏好重排候选设备顺序（偏好在前，其余保持原序）。
-
-    与主循环单步路径（_run_schedule_pass）的偏好语义保持一致，供链式整链块、
-    前缀、反向链路径复用，避免"配置了偏好但链内路径被忽略"（探针 P7）。
-    仅重排顺序、不改候选集合：偏好设备在同条件（可用时刻并列）时被优先选中。
-    """
-    if not eqp_preferences or len(eqp_ids) <= 1:
-        return eqp_ids
-    preferred = eqp_preferences.get((lot_name, step_name))
-    if not preferred:
-        return eqp_ids
-    ordered = [p for p in preferred if p in eqp_ids]
-    for e in eqp_ids:
-        if e not in ordered:
-            ordered.append(e)
-    return ordered
 
 
 # Q-time 链内步间等待的固定安全余量（分钟）：分摊预算时保留，避免刚好卡在临界
@@ -1421,11 +1391,7 @@ def _check_special_eqp_available(
 
     else:
         # ——— together=false：运行中可加入，但需检查限制 ———
-        # 容量检查以 lot 就绪时刻（ready_time）为基准判断活跃作业：只有"拟开始时刻
-        # 之前已结束"的作业才算释放。不能用 cur_time（全局推进时间）清理——先排的
-        # Lot 刚结束时 cur_time==其 end，会被误判已释放，导致后续 Lot 以重叠时刻
-        # 开始（探针 P12 根因）。
-        bs["active"] = [(ln, q, et) for ln, q, et in bs["active"] if et > ready_time]
+        bs["active"] = [(ln, q, et) for ln, q, et in bs["active"] if et > now]
 
         current_lots = len(bs["active"])
         current_qty = sum(q for _, q, _ in bs["active"])
@@ -1761,7 +1727,6 @@ def _compute_reverse_placement(
     resolve_max_iterations: int,
     chain_info: Optional[dict] = None,
     priority_wait_map: Optional[dict[tuple[int, int], int]] = None,
-    eqp_preferences: Optional[dict[tuple[str, str], list[str]]] = None,
 ) -> tuple[list, list, list, datetime]:
     """计算链后缀的反向调度位置（不提交），返回 (starts, ends, eqps, suffix_start_time)。
 
@@ -1799,8 +1764,6 @@ def _compute_reverse_placement(
                 sls = special_lot_step_lookup[sls_key]
                 if sls.special_eqp:
                     eqp_ids = list(sls.special_eqp)
-        eqp_ids = _reorder_eqp_ids_by_preference(eqp_ids, lot.lot_name, step.step_name,
-                                                 eqp_preferences)
 
         best_eqp = None
         best_start = datetime.min
@@ -1862,7 +1825,6 @@ def _precompute_whole_chain_block(
     now: Optional[datetime] = None,
     ref_release_forecast: Optional[dict] = None,
     cycle_forecast_keys: Optional[set] = None,
-    eqp_preferences: Optional[dict[tuple[str, str], list[str]]] = None,
 ) -> Optional[dict]:
     """整链块调度（借鉴 scheduler_before1 方法 B）：对无 reference 阻塞的 Q-time 链，
     把整条链作为一块整体，做"从链尾倒排 + 整链后移重试"迭代：
@@ -2026,8 +1988,7 @@ def _precompute_whole_chain_block(
                     break
             if _s.eqp_ids:
                 _cands = []
-                for _e in _reorder_eqp_ids_by_preference(
-                        list(_s.eqp_ids), lot.lot_name, _s.step_name, eqp_preferences):
+                for _e in _s.eqp_ids:
                     _st = _find_earliest_slot(_g_sim.get(_e, []), _base, timedelta(minutes=_ct))
                     if _st == datetime.max:
                         continue
@@ -2092,8 +2053,7 @@ def _precompute_whole_chain_block(
         if last_s.eqp_ids:
             cands = []
             ideal = earliest_chain_end - timedelta(minutes=last_ct)
-            for e in _reorder_eqp_ids_by_preference(
-                    list(last_s.eqp_ids), lot.lot_name, last_s.step_name, eqp_preferences):
+            for e in last_s.eqp_ids:
                 st = _find_earliest_slot(sim_intervals.get(e, []), ideal, timedelta(minutes=last_ct))
                 if st == datetime.max:
                     continue
@@ -2148,8 +2108,7 @@ def _precompute_whole_chain_block(
                     ideal_start = lower_bounds[i]
                 if s.eqp_ids:
                     cands = []
-                    for e in _reorder_eqp_ids_by_preference(
-                            list(s.eqp_ids), lot.lot_name, s.step_name, eqp_preferences):
+                    for e in s.eqp_ids:
                         st = _find_earliest_slot(sim_intervals.get(e, []), ideal_start, timedelta(minutes=ct))
                         if st == datetime.max:
                             continue
@@ -2312,7 +2271,6 @@ def _try_schedule_chain_forward(
     ref_release_forecast: dict = None,
     cur_time: Optional[datetime] = None,
     cycle_forecast_keys: Optional[set] = None,
-    eqp_preferences: Optional[dict[tuple[str, str], list[str]]] = None,
 ) -> tuple[bool, int]:
     """尝试从前往后调度一个 Q-time 链段。
     如果遇到 reference 阻塞或设备不可用，则拆链：
@@ -2513,8 +2471,6 @@ def _try_schedule_chain_forward(
                     sls = special_lot_step_lookup[sls_key]
                     if sls.special_eqp:
                         eqp_ids = list(sls.special_eqp)
-            eqp_ids = _reorder_eqp_ids_by_preference(eqp_ids, lot.lot_name, step.step_name,
-                                                     eqp_preferences)
 
             ready_time = state["ready_time"] if scheduled_count == 0 else (
                 lot_entries[-1].end_time if lot_entries else state["ready_time"])
@@ -2564,9 +2520,6 @@ def _try_schedule_chain_forward(
                                 eqp_id, lot.qty, ready_time, ct,
                                 special_eqp_map, eqp_batch_state, machine_intervals)
                             if not can_use:
-                                if adj_time > state["ready_time"]:
-                                    state["ready_time"] = adj_time
-                                    state["_base_ready_time"] = adj_time
                                 continue
                             ready_time = max(ready_time, adj_time)
                         check_time = ready_time
@@ -2757,7 +2710,7 @@ def _try_schedule_chain_forward(
             ref_release_times, pending_refs.get(lot.lot_name, set()), ref_block_info,
             state.get("coarse_anchors", []), resolve_max_iterations,
             _first_ready, ref_release_forecast=ref_release_forecast,
-            cycle_forecast_keys=cycle_forecast_keys, eqp_preferences=eqp_preferences)
+            cycle_forecast_keys=cycle_forecast_keys)
 
     # ---- 紧链整链块失败：不可回退单步（会散开超 Q），延迟 ready_time 重试 ----
     # 整链块调度失败说明当前时间点设备/约束不足以把整条链紧凑放下。若回退单步贪婪，
@@ -2836,8 +2789,6 @@ def _try_schedule_chain_forward(
                 sls = special_lot_step_lookup[sls_key]
                 if sls.special_eqp:
                     eqp_ids = list(sls.special_eqp)
-        eqp_ids = _reorder_eqp_ids_by_preference(eqp_ids, lot.lot_name, step.step_name,
-                                                 eqp_preferences)
 
         ready_time = state["ready_time"] if scheduled_count == 0 else (
             lot_entries[-1].end_time if lot_entries else state["ready_time"]
@@ -2881,9 +2832,6 @@ def _try_schedule_chain_forward(
                             eqp_id, lot.qty, ready_time, ct,
                             special_eqp_map, eqp_batch_state, machine_intervals)
                         if not can_use:
-                            if adj_time > state["ready_time"]:
-                                state["ready_time"] = adj_time
-                                state["_base_ready_time"] = adj_time
                             continue
                         ready_time = max(ready_time, adj_time)
                     if _is_parallel_eqp(eqp_id, special_eqp_map):
@@ -3864,7 +3812,6 @@ def _try_schedule_chain_reverse(
     ref_release_times: dict,
     priority_wait_map: dict,
     chain_info: Optional[dict] = None,
-    eqp_preferences: Optional[dict[tuple[str, str], list[str]]] = None,
 ) -> bool:
     """从后往前反向调度链后缀步骤。
     从 Q-time deadline 往前倒排，确保后缀步骤紧贴 deadline 之前。
@@ -3886,8 +3833,7 @@ def _try_schedule_chain_reverse(
     rev_starts, rev_ends, rev_eqps, _ = _compute_reverse_placement(
         suffix_steps, deadline, lot, ct_lookup, special_lot_step_lookup,
         machine_intervals, shift_change_intervals, step_windows, end_windows,
-        manual_adjust_lookup, resolve_max_iterations,
-        eqp_preferences=eqp_preferences)
+        manual_adjust_lookup, resolve_max_iterations)
 
     if rev_starts is None:
         return False
@@ -5191,15 +5137,13 @@ def _run_schedule_pass(
                 lot_entries, eqp_entries, qtime_alerts,
                 pending_refs, state.get("ref_block_info", {}), shift_times,
                 reference_deps, lot_state, ref_release_times, priority_wait_map,
-                chain_info, eqp_preferences=eqp_preferences)
+                chain_info)
             current_time = max(current_time, lot_entries[-1].end_time if lot_entries else current_time)
             continue
 
         # 链式调度
         chain_scheduled = False
-        # FTF qty 变化步骤存在时禁用链式：链式路径不消费 ftf_rule（qty 变换会静默丢失），
-        # 走单步路径让 5416 行的 FTF 执行逻辑生效（链内 Q 紧凑由链压实兜底）。
-        if chain_info and chain_info.get("is_chain_start") and not state.get("ftf_rule"):
+        if chain_info and chain_info.get("is_chain_start"):
             chain_scheduled, scheduled_count = _try_schedule_chain_forward(
                 lot, state, chain_info, flow_map, ct_lookup, qtime_by_product,
                 machine_intervals, machine_available,
@@ -5215,7 +5159,6 @@ def _run_schedule_pass(
                 state.get("ref_release_forecast"),  # 第一遍预测锚点
                 current_time,  # 真实推进时间（恒组批 busy_until 判定用）
                 _cycle_forecast_keys,  # 环内预测释放的 ref key 集合
-                eqp_preferences=eqp_preferences,
             )
             if chain_scheduled or state.get("chain_reverse_pending"):
                 current_time = max(current_time, lot_entries[-1].end_time if lot_entries else current_time)
@@ -5311,11 +5254,6 @@ def _run_schedule_pass(
                         special_eqp_map, eqp_batch_state, machine_intervals,
                         cur_time=current_time)
                     if not can_use:
-                        # 容量/锁定未释放：把 lot 就绪推进到最早释放时刻，避免
-                        # 每轮以旧 ready 重试导致主循环空转（探针 P12 时序）。
-                        if adj_time > state["ready_time"]:
-                            state["ready_time"] = adj_time
-                            state["_base_ready_time"] = adj_time
                         continue
                     ready = max(ready, adj_time)
 
