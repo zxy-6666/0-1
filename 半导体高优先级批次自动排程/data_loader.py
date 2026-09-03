@@ -270,6 +270,12 @@ def load_lot_list(filepath: str, constraints_filepath: Optional[str] = None) -> 
         # start_step 不再合并到 lot 级别，保留在每个 reference 的 LotConstraint 中
         # 排程引擎会按 per-reference start_step 处理阻塞逻辑
 
+        # 先导批标记（可选列）：true/TRUE/True/Y/y/1 都视为先导批，不计完工时间得分
+        pioneer = False
+        if "pioneer" in row.index:
+            pv = _safe_str(row, "pioneer").strip().lower()
+            if pv in ("true", "t", "y", "yes", "1"):
+                pioneer = True
         lots.append(Lot(
             lot_name=lot_name,
             priority=parse_priority(str(row["priority"])),
@@ -285,6 +291,7 @@ def load_lot_list(filepath: str, constraints_filepath: Optional[str] = None) -> 
             start_step=None,  # per-reference start_step 在每个 reference 中
             hold_periods=merged_hold_periods,
             planned_end=parse_datetime(row.get("planned_end")) if "planned_end" in row.index else None,
+            pioneer=pioneer,
         ))
     return lots
 

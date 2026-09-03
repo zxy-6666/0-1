@@ -27,18 +27,18 @@ real9\tA005-R1-UF-DISPENSE\tf9\tA005-P1-UF-DISPENSE\tlead
 real9\tA005-R1-MD-MOLDING\tf9\tA005-P1-MD-MOLDING\tlead
 """
 
-LOT_LIST = "lot_name\tproduct_name\tqty\tpriority\tstep_name\ttarget_step\tlot_state\trunning_time\tstart_time\n" + "\n".join(
-    [f"f45\tA005-P1\t2\t1-1\tA005-P1-FC-REFLOW\t\twait\t0\t2026/9/4 9:30",
-     f"real4\tA005-MA\t4\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/4 9:30",
-     f"real5\tA005-MA\t4\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/4 9:30",
-     f"f678\tA005-P1\t1\t1-1\tA005-P1-FC-REFLOW\t\twait\t0\t2026/9/6 9:30",
-     f"real6\tA005-MA\t4\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/6 9:30",
-     f"real7\tA005-MA\t1\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/6 9:30",
-     f"real8\tA005-MA\t1\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/6 9:30",
-     f"f9\tA005-P1\t2\t1-1\tA005-P1-FC-REFLOW\t\twait\t0\t2026/9/8 9:30",
-     f"real9\tA005-MA\t9\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/8 9:30"])
+LOT_LIST = "lot_name\tproduct_name\tqty\tpriority\tstep_name\ttarget_step\tlot_state\trunning_time\tstart_time\tpioneer\n" + "\n".join(
+    [f"f45\tA005-P1\t2\t1-1\tA005-P1-FC-REFLOW\t\twait\t0\t2026/9/4 9:30\ttrue",
+     f"real4\tA005-MA\t4\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/4 9:30\tfalse",
+     f"real5\tA005-MA\t4\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/4 9:30\tfalse",
+     f"f678\tA005-P1\t1\t1-1\tA005-P1-FC-REFLOW\t\twait\t0\t2026/9/6 9:30\ttrue",
+     f"real6\tA005-MA\t4\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/6 9:30\tfalse",
+     f"real7\tA005-MA\t1\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/6 9:30\tfalse",
+     f"real8\tA005-MA\t1\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/6 9:30\tfalse",
+     f"f9\tA005-P1\t2\t1-1\tA005-P1-FC-REFLOW\t\twait\t0\t2026/9/8 9:30\ttrue",
+     f"real9\tA005-MA\t9\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/8 9:30\tfalse"])
 
-def run(label, constr):
+def run(label, constr, lead_pairs=None):
     open(f"{DATA_DIR}/lot_list.csv","w").write(LOT_LIST)
     open(f"{DATA_DIR}/lot_constraints.csv","w").write(constr)
     lots = load_lot_list(f"{DATA_DIR}/lot_list.csv", constraints_filepath=f"{DATA_DIR}/lot_constraints.csv")
@@ -70,6 +70,26 @@ def run(label, constr):
         def f(sub):
             return next((t for k,t in d.items() if sub in k),None)
         print(f"  {lot:6s} FC={f('FC-REFLOW'):%m/%d %H:%M}  UF-DISP={f('UF-DISPENSE'):%m/%d %H:%M}  DAF-BAKE={f('DAF-BAKE'):%m/%d %H:%M}  MD-MOLD={f('MD-MOLDING'):%m/%d %H:%M}")
+    if lead_pairs:
+        endmap={}
+        for e in le: endmap.setdefault(e.lot_name,{})[e.step_name]=e.end_time
+        print("  -- lead back-to-back gaps (leader=lot2, follower=lot1) --")
+        for (fl, fstep, ld, lstep) in lead_pairs:
+            fs=by.get(fl,{}).get(fstep); le_=endmap.get(ld,{}).get(lstep)
+            if fs is None or le_ is None:
+                print(f"    {fl}.{fstep} <- {ld}.{lstep}: 缺步骤")
+                continue
+            gap_h=(fs-le_).total_seconds()/3600.0
+            print(f"    {fl}.{fstep:20s} {fs:%m/%d %H:%M} after {ld}.{lstep:20s} {le_:%m/%d %H:%M}  gap={gap_h:.2f}h")
 
 run("A: EMPTY constraints", "")
-run("B: USER lead constraints", USER_CONSTRAINTS)
+run("B: USER lead constraints", USER_CONSTRAINTS,
+    lead_pairs=[("real4","A005-R1-FC-REFLOW","f45","A005-P1-FC-REFLOW"),
+                ("real4","A005-R1-UF-DISPENSE","f45","A005-P1-UF-DISPENSE"),
+                ("real5","A005-R1-UF-DISPENSE","real4","A005-R1-UF-DISPENSE"),
+                ("real6","A005-R1-FC-REFLOW","f678","A005-P1-FC-REFLOW"),
+                ("real6","A005-R1-UF-DISPENSE","f678","A005-P1-UF-DISPENSE"),
+                ("real7","A005-R1-UF-DISPENSE","real6","A005-R1-UF-DISPENSE"),
+                ("real8","A005-R1-UF-DISPENSE","real7","A005-R1-UF-DISPENSE"),
+                ("real9","A005-R1-UF-DISPENSE","f9","A005-P1-UF-DISPENSE"),
+                ("real6","A005-R1-MD-MOLDING","f678","A005-P1-MD-MOLDING"),])

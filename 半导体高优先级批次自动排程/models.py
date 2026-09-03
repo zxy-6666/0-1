@@ -58,6 +58,7 @@ class Lot:
     start_step: Optional[str] = None       # 满足 reference 条件后，该 step 从计算时间开始
     hold_periods: list[tuple[Optional[datetime], Optional[datetime]]] = field(default_factory=list)  # 多段Hold（合并所有）
     planned_end: Optional[datetime] = None  # 计划完成时间（交期，可选）
+    pioneer: bool = False                 # 先导批：跑在前面起"扫雷"作用；其完工时间不计入目标得分（delay 无谓），但 Q-time 等硬约束仍生效
 
 
 @dataclass

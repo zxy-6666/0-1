@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 from paths import DATA_DIR
 from data_loader import (load_lot_list, load_flow, load_step_ct, load_qtime,
     build_ct_lookup, auto_repair_step_ct, load_ftf_qty_change, load_special_lot_step,
@@ -26,12 +27,12 @@ real9\tA005-R1-FC-REFLOW\tf9\tA005-P1-FC-REFLOW\tlead
 real9\tA005-R1-UF-DISPENSE\tf9\tA005-P1-UF-DISPENSE\tlead
 real9\tA005-R1-MD-MOLDING\tf9\tA005-P1-MD-MOLDING\tlead
 """
-LINK="lot_name\tproduct_name\tqty\tpriority\tstep_name\ttarget_step\tlot_state\trunning_time\tstart_time\n"+"\n".join(
- [f"f45\tA005-P1\t2\t1-1\tA005-P1-FC-REFLOW\t\twait\t0\t2026/9/4 9:30",f"real4\tA005-MA\t4\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/4 9:30",
-  f"real5\tA005-MA\t4\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/4 9:30",f"f678\tA005-P1\t1\t1-1\tA005-P1-FC-REFLOW\t\twait\t0\t2026/9/6 9:30",
-  f"real6\tA005-MA\t4\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/6 9:30",f"real7\tA005-MA\t1\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/6 9:30",
-  f"real8\tA005-MA\t1\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/6 9:30",f"f9\tA005-P1\t2\t1-1\tA005-P1-FC-REFLOW\t\twait\t0\t2026/9/8 9:30",
-  f"real9\tA005-MA\t9\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/8 9:30"])
+LINK="lot_name\tproduct_name\tqty\tpriority\tstep_name\ttarget_step\tlot_state\trunning_time\tstart_time\tpioneer\n"+"\n".join(
+ [f"f45\tA005-P1\t2\t1-1\tA005-P1-FC-REFLOW\t\twait\t0\t2026/9/4 9:30\ttrue",f"real4\tA005-MA\t4\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/4 9:30\tfalse",
+  f"real5\tA005-MA\t4\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/4 9:30\tfalse",f"f678\tA005-P1\t1\t1-1\tA005-P1-FC-REFLOW\t\twait\t0\t2026/9/6 9:30\ttrue",
+  f"real6\tA005-MA\t4\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/6 9:30\tfalse",f"real7\tA005-MA\t1\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/6 9:30\tfalse",
+  f"real8\tA005-MA\t1\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/6 9:30\tfalse",f"f9\tA005-P1\t2\t1-1\tA005-P1-FC-REFLOW\t\twait\t0\t2026/9/8 9:30\ttrue",
+  f"real9\tA005-MA\t9\t3-1\tA005-R1-FC-REFLOW\t\twait\t0\t2026/9/8 9:30\tfalse"])
 open(f"{DATA_DIR}/lot_list.csv","w").write(LINK)
 open(f"{DATA_DIR}/lot_constraints.csv","w").write(CONSTR)
 lots = load_lot_list(f"{DATA_DIR}/lot_list.csv", constraints_filepath=f"{DATA_DIR}/lot_constraints.csv")
@@ -60,7 +61,12 @@ for e in ee:
     if e.eqp_id in ("PLAOV002","PLAOV003"):
         if e.start_time >= datetime(2026,9,5) and e.start_time <= datetime(2026,9,15):
             print(f"  {e.eqp_id} {e.start_time:%m/%d %H:%M}->{e.end_time:%m/%d %H:%M} {e.lot_name} {e.step_name}")
-for target in ["f678"]:
+print("\n===== PKPOV001(UF-CURE)/PKUFD001(UF-DISPENSE)/PEDES101(UF-PLASMA) 09/09-09/12 =====")
+for e in ee:
+    if e.eqp_id in ("PKPOV001","PKUFD001","PEDES101"):
+        if e.start_time >= datetime(2026,9,9) and e.start_time <= datetime(2026,9,12):
+            print(f"  {e.eqp_id} {e.start_time:%m/%d %H:%M}->{e.end_time:%m/%d %H:%M} {e.lot_name} {e.step_name}")
+for target in ["real9","f9"]:
     lot=next(l for l in lots if l.lot_name==target)
     order={s.step_name:i for i,s in enumerate(flow_map[lot.product_name])}
     es=[e for e in le if e.lot_name==target]; es.sort(key=lambda e: order.get(e.step_name,9999))

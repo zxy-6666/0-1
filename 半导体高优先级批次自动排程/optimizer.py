@@ -247,7 +247,8 @@ def schedule_optimized(
             # 合法解得分 = 加权完工时间 + 统一余量项（分钟）：达标区（margin ≥ 安全余量）
             # 微奖励、缺口区重罚（越接近 0 越接近超Q违规量级），连续可导、直接并入得分，
             # 与完工时间统一计量，避免"罚分盖不过完工时间差异"的问题。
-            penal = obj["score"] + (obj.get("qtime_margin_term", 0.0) or 0.0)
+            penal = (obj["score"] + (obj.get("qtime_margin_term", 0.0) or 0.0)
+                     + (obj.get("lead_back_to_back_term", 0.0) or 0.0))
             is_valid = True
             # 次目标：同分时用"相对安全余量的非线性收益"区分（越大越好）
             margin = obj.get("min_qtime_margin_benefit")
@@ -441,8 +442,9 @@ def schedule_optimized(
                 T *= alpha
                 continue
             _errs, _obj, _nle, _nee, _nqa = res
-            # 与主循环一致：得分 = 加权完工时间 + 统一余量项
-            nb_score = _obj["score"] + (_obj.get("qtime_margin_term", 0.0) or 0.0)
+            # 与主循环一致：得分 = 加权完工时间 + 统一余量项 + lead背靠背软约束项
+            nb_score = ((_obj["score"] + (_obj.get("qtime_margin_term", 0.0) or 0.0))
+                        + (_obj.get("lead_back_to_back_term", 0.0) or 0.0))
             nb_margin = _obj.get("min_qtime_margin_benefit")  # 非线性收益（越大越好）
             # delta 与"当前解"比较（SA 退火基准）：当前解漂移后仍能正常比较，
             # 避免旧版"与历史最优比"导致的温控失真/搜索瘫痪。

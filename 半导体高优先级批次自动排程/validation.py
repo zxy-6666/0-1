@@ -300,6 +300,39 @@ def _qtime_margins_from_entries(
     return margins
 
 
+def _lead_back_to_back_gap_minutes(lot_entries, lots) -> float:
+    """lead 背靠背软约束累计：为每条 lead 计算两衔接步实际相距的"背靠背间隙"。
+
+    语义：lead 表达两批在衔接步处应背靠背（靠得近）。此处不关心谁前谁后，
+    取两种先后次序里能构成正间隙的最小值 gap（分钟）——
+    gap = 较后步骤.start − 较前步骤.end。若两段重叠则 gap=0。
+    软约束只惩罚 gap（目标函数罚分），不强制，正式批不会被拖后。
+    返回累计 min(over_gap) 的原始间隙和（供 compute_objective 折入得分）。
+    """
+    _INF = 1e15
+    by_lot_step: dict = {}
+    for e in lot_entries:
+        by_lot_step[(e.lot_name, e.step_name)] = e
+    total_gap = 0.0
+    for lot in lots:
+        for lp in lot.lead_pairs or []:
+            e1 = by_lot_step.get((lp.lot1, lp.step1))
+            e2 = by_lot_step.get((lp.lot2, lp.step2))
+            if e1 is None or e2 is None:
+                continue
+            g12 = (e2.start_time - e1.end_time).total_seconds() / 60.0   # lot1 先完成
+            g21 = (e1.start_time - e2.end_time).total_seconds() / 60.0   # lot2 先完成
+            if g12 < 0:
+                g12 = _INF
+            if g21 < 0:
+                g21 = _INF
+            gap = min(g12, g21)
+            if gap == _INF:
+                gap = 0.0
+            total_gap += gap
+    return total_gap
+
+
 def _qtime_margin_benefit(rel: float) -> float:
     """Q-time 余量收益（非线性，越大越好，返回 [0,1]）。
 
@@ -325,6 +358,8 @@ def _qtime_margin_benefit(rel: float) -> float:
 #   - margin < safe（缺口区）：重罚，越接近 0 罚分越大，逼近一次超Q违规的量级。
 _MARGIN_REWARD_CAP = 20.0    # 达标区单链奖励上限（分钟）
 _ZERO_MARGIN_PENALTY = 1e6   # 余量=0 时单链罚分基数（分钟）：≈ 超Q违规（_PENALTY_PER_ERR）的量级
+LEAD_GAP_BASELINE_MIN = 60.0   # lead 背靠背软约束基准间隙（分钟）：≤1h 不罚
+LEAD_GAP_COST_PER_MIN = 0.08   # 超基准每 1 分钟罚分（软惩罚，轻微，引导不离太远）
 
 
 def compute_objective(
@@ -361,6 +396,12 @@ def compute_objective(
         if cur is None or e.end_time > cur:
             completion[e.lot_name] = e.end_time
 
+    # 先导批不计入完工时间得分（先导批 delay 无谓，只求跑在前面）；但其步骤仍参与
+    # Q-time 校验/余量罚分（下方 qtime_margin_term 对所有批次统一计），
+    # 也仍会正常参与排程与 lead 背靠背（领导批侧）。
+    pioneer_lots = {l.lot_name for l in lots if getattr(l, "pioneer", False)}
+    completion_no_pioneer = {k: v for k, v in completion.items() if k not in pioneer_lots}
+
     max_ext = 1
     for lot in lots:
         max_ext = max(max_ext, lot.priority[0])
@@ -377,7 +418,7 @@ def compute_objective(
             weights[lot.lot_name] = 1.0
 
     weighted_total = 0.0
-    for lot_name, end in completion.items():
+    for lot_name, end in completion_no_pioneer.items():
         dur_min = (end - schedule_start).total_seconds() / 60.0
         weighted_total += weights.get(lot_name, 1.0) * dur_min
 
@@ -426,6 +467,22 @@ def compute_objective(
 
     score = weighted_total
 
+    # ---- lead 背靠背软约束（仅罚分，不强制）----
+    # 用户设定：背靠背是软约束，给一个基准（如 1h），衔接步靠得远则小幅惩罚，但不用太狠。
+    # 该惩罚仅引导优化器把被 lead 约束的批次衔接步拉近，不会硬性拖后正式批。
+    # 基准 LEAD_GAP_BASELINE_MIN=60min；超基准每超 1min 罚 LEAD_GAP_COST_PER_MIN 分。
+    lead_back_to_back_term = 0.0
+    lead_back_to_back_gap = 0.0
+    try:
+        if any(getattr(l, "lead_pairs", None) or [] for l in lots):
+            lead_back_to_back_gap = _lead_back_to_back_gap_minutes(lot_entries, lots)
+            n_leads = sum(1 for l in lots for _ in (l.lead_pairs or []))
+            over = lead_back_to_back_gap - LEAD_GAP_BASELINE_MIN * n_leads
+            if over > 0:
+                lead_back_to_back_term = LEAD_GAP_COST_PER_MIN * over
+    except Exception:
+        pass
+
     return {
         "completion_times": completion,
         "weighted_total": weighted_total,
@@ -438,4 +495,6 @@ def compute_objective(
         "min_qtime_margin_benefit": min_qtime_margin_benefit,
         "qtime_margin_term": qtime_margin_term,
         "qtime_margin_violations": _violations,
+        "lead_back_to_back_gap": lead_back_to_back_gap,
+        "lead_back_to_back_term": lead_back_to_back_term,
     }

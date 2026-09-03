@@ -1,10 +1,10 @@
-lot_name	product_name	qty	priority	step_name	target_step	lot_state	running_time	start_time
-f45	A005-P1	2	1-1	A005-P1-FC-REFLOW		wait	0	2026/9/4 9:30
-real4	A005-MA	4	3-1	A005-R1-FC-REFLOW		wait	0	2026/9/4 9:30
-real5	A005-MA	4	3-1	A005-R1-FC-REFLOW		wait	0	2026/9/4 9:30
-f678	A005-P1	1	1-1	A005-P1-FC-REFLOW		wait	0	2026/9/6 9:30
-real6	A005-MA	4	3-1	A005-R1-FC-REFLOW		wait	0	2026/9/6 9:30
-real7	A005-MA	1	3-1	A005-R1-FC-REFLOW		wait	0	2026/9/6 9:30
-real8	A005-MA	1	3-1	A005-R1-FC-REFLOW		wait	0	2026/9/6 9:30
-f9	A005-P1	2	1-1	A005-P1-FC-REFLOW		wait	0	2026/9/8 9:30
-real9	A005-MA	9	3-1	A005-R1-FC-REFLOW		wait	0	2026/9/8 9:30
+lot_name	product_name	qty	priority	step_name	target_step	lot_state	running_time	start_time	pioneer
+f45	A005-P1	2	1-1	A005-P1-FC-REFLOW		wait	0	2026/9/4 9:30	true
+real4	A005-MA	4	3-1	A005-R1-FC-REFLOW		wait	0	2026/9/4 9:30	false
+real5	A005-MA	4	3-1	A005-R1-FC-REFLOW		wait	0	2026/9/4 9:30	false
+f678	A005-P1	1	1-1	A005-P1-FC-REFLOW		wait	0	2026/9/6 9:30	true
+real6	A005-MA	4	3-1	A005-R1-FC-REFLOW		wait	0	2026/9/6 9:30	false
+real7	A005-MA	1	3-1	A005-R1-FC-REFLOW		wait	0	2026/9/6 9:30	false
+real8	A005-MA	1	3-1	A005-R1-FC-REFLOW		wait	0	2026/9/6 9:30	false
+f9	A005-P1	2	1-1	A005-P1-FC-REFLOW		wait	0	2026/9/8 9:30	true
+real9	A005-MA	9	3-1	A005-R1-FC-REFLOW		wait	0	2026/9/8 9:30	false

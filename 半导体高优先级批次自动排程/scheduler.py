@@ -922,6 +922,12 @@ def _tight_qtime_target_start(
                         fs_free = _cand
                 if fs_free != datetime.max and fs_free > req:
                     req = fs_free
+                if os.environ.get("SCHED_TRACE") == "1" and lot.lot_name in ("f9", "real9") \
+                        and ("UF-DISPENSE" in fs.step_name or "UF-CURE" in fs.step_name):
+                    _fsf = (fs_free.strftime("%m/%d %H:%M") if fs_free != datetime.max else "MAX")
+                    print(f"[TRACE-NEST] {lot.lot_name} {fs.step_name} base_t={base_t:%m/%d %H:%M} "
+                          f"fs_free={_fsf} req_before_downstream=", end="",
+                          file=__import__("sys").stderr)
             for qn in product_qtimes or []:
                 if qn.start_step != fs.step_name:
                     continue
@@ -949,6 +955,9 @@ def _tight_qtime_target_start(
                 req_fs = off - timedelta(minutes=fs_ct) if sm2 == "track out" else off
                 if req_fs > req:
                     req = req_fs
+                if os.environ.get("SCHED_TRACE") == "1" and lot.lot_name in ("f9", "real9") \
+                        and ("UF-DISPENSE" in fs.step_name or "UF-CURE" in fs.step_name):
+                    print(f" req->{req_fs:%m/%d %H:%M} (dn={dn})", file=__import__("sys").stderr)
             return req
 
         # 解析 E 真实可行时刻（设备不可用/换班/时间窗）
@@ -2007,6 +2016,11 @@ def _precompute_whole_chain_block(
     if _init_cs is None:
         return None
     chain_start = _init_cs
+    _dbg_block = lot.lot_name in ("f9", "real9") and any("UF-PLASMA" in s.step_name for _, s in steps)
+    if _dbg_block:
+        _dbg(f"[BLOCK] lot={lot.lot_name} chain={names} first_lb={first_lb} init_chain_start={chain_start}")
+        if "A005-P1-UF-PLASMA" not in names and "A005-R1-UF-PLASMA" not in names:
+            _dbg_block = False
 
     # ---- 正向贪心优先（安全站点模型）：链内步骤尽早做，Q-time 达标即采用 ----
     # 用户规则：做完当前站点就该继续往下做（机台空闲即做），不要为了后端步骤
@@ -2989,7 +3003,28 @@ def _try_schedule_chain_forward(
         # 粗排程锚点下限（已由整链块计划计入时不重复强制）
         _ca = state.get("coarse_anchors", [])
         if _planned is None and _ca and i < len(_ca) and _ca[i] > start_time:
-            start_time = _ca[i]
+            # —— 紧链步钳制保护 ——
+            # 粗排锚点若把【紧 Q 链的任一步】抬到当日较晚时刻，会连带把链尾端步推入
+            # 设备停机窗（如 PKUFD 22:00-08:30），或让 DISPENSE 后 CURE 无法同日放下，
+            # 整条紧链被迫跨天，lot 被无谓延后一整天（real9 UF 链 BAKE 后空等 27.7h 的根因）。
+            # 紧链步（作为某个紧 Q-time 的起点或终点）的放置应由下方
+            # _tight_qtime_target_start 按紧链 deadline 反推/正推（权威），而非被陈旧的
+            # 粗排锚点顶住；因此对紧链步不强钳制，保留设备真实最早槽位。
+            # 修复：原先只看"起点/终点是紧 Q 段"的步骤，导致链内的非紧段成员
+            # （UF 链的 BAKE、AUTO-SPLIT）仍被退化的粗排锚点钳制到 16:08/18:44 之类的
+            # 深夜时刻，使整条紧链无法同日放下、被迫跨天。改为：本函数正在调度的是
+            # 某条紧链块（is_tight）时，其**所有**链内成员都跳过粗排锚点钳制——整条
+            # 链（含 BAKE/AUTO-SPLIT）一律按设备真实最早槽位放置，再由紧 Q 求解器
+            # 反推/正推保证链内 Q 不超、当日内完成。
+            _in_tight_chain = bool(chain_info.get("is_tight"))
+            if not _in_tight_chain:
+                for _q in qtime_by_product.get(lot.product_name, []):
+                    if _q.max_duration is not None and _q.max_duration <= TIGHT_CHAIN_THRESHOLD:
+                        if _q.start_step == step.step_name or _q.end_step == step.step_name:
+                            _in_tight_chain = True
+                            break
+            if not _in_tight_chain:
+                start_time = _ca[i]
         end_time = start_time + timedelta(minutes=ct)
 
         # ---- 紧 Q-time 窗口前瞻：延迟起点，避免端步骤超限（整链块计划步已在校验中处理）----
@@ -3009,6 +3044,10 @@ def _try_schedule_chain_forward(
             if isinstance(qh, datetime) and qh > start_time:
                 start_time = qh
                 end_time = start_time + timedelta(minutes=ct)
+                if os.environ.get("SCHED_TRACE") == "1" and lot.lot_name in ("f9", "real9") \
+                        and "UF-PLASMA" in step.step_name:
+                    print(f"[TRACE-PLASMA] {lot.lot_name} tight_lookahead deferred "
+                          f"start->{qh:%m/%d %H:%M}", file=__import__("sys").stderr)
 
         start_time, end_time = _apply_manual_adjust(
             lot.lot_name, step.step_name, start_time, end_time, ct, manual_adjust_lookup,
@@ -3025,6 +3064,10 @@ def _try_schedule_chain_forward(
         start_time, end_time = _apply_manual_adjust(
             lot.lot_name, step.step_name, start_time, end_time, ct, manual_adjust_lookup,
             pin_lookup=pin_lookup, reapply=True)
+        if os.environ.get("SCHED_TRACE") == "1" and lot.lot_name in ("f9", "real9") \
+                and "UF-PLASMA" in step.step_name:
+            print(f"[TRACE-PLASMA] {lot.lot_name} committed start={start_time:%m/%d %H:%M} "
+                  f"eqp={best_eqp} ready={ready_time:%m/%d %H:%M}", file=__import__("sys").stderr)
 
         product_qtimes_local = qtime_by_product.get(lot.product_name, [])
         _check_qtime_start(state, step.step_name, product_qtimes_local, start_time, end_time)
@@ -3206,6 +3249,12 @@ def _coarse_earliest_anchors(
             cinfo = product_cmap.get(s.step_name)
             if cinfo:
                 wait = _effective_chain_wait(lot, cinfo, priority_wait_map)
+            import sys as _sys3
+            if os.environ.get("SCHED_TRACE") == "1" and lot.lot_name in ("f9", "real9") \
+                    and ("UF" in s.step_name or "FC-INSP" in s.step_name or s.step_name.endswith("MEAS")\
+                          or "IR-" in s.step_name):
+                print(f"[CA] {lot.lot_name} {s.step_name} t={t:%m/%d %H:%M} ct={ct:.0f}m wait={wait:.0f}m\n",
+                      file=_sys3.stderr)
             t += timedelta(minutes=ct + wait)
         anchors[lot.lot_name] = lst
 
@@ -3347,6 +3396,10 @@ def _coarse_earliest_anchors(
                 for j in range(rel_start, len(target_list)):
                     target_list[j] = target_list[j] + shift
                 changed = True
+                if os.environ.get("SCHED_TRACE") == "1":
+                    print(f"[CAP2] {lot_name} ref {r.start_step} >= {ref_lot_name}.{ref_step} "
+                          f"release={release:%m/%d %H:%M} shift_h={shift.total_seconds()/3600:.1f}",
+                          file=__import__("sys").stderr)
         return changed
 
     # 初次 reference 传播
@@ -3407,6 +3460,13 @@ def _coarse_earliest_anchors(
                     continue
                 chain_steps = info["chain_steps"]
                 chain_end_name = info["chain_end_step"]
+                if os.environ.get("SCHED_TRACE") == "1" and lot.lot_name in ("f9", "real9") \
+                        and any("UF" in _cs for _cs in chain_steps):
+                    import sys as _sysc
+                    _chain_slice = [lst[j] for j in range(s_idx - cur_idx, e_idx - cur_idx + 1)] if (s_idx - cur_idx >= 0 and e_idx - cur_idx < len(lst)) else []
+                    _fmt = ", ".join(f"{_v:%m/%d %H:%M}" for _v in _chain_slice)
+                    print(f"[COMPACT] enter {lot.lot_name} chain={chain_steps} "
+                          f"min_qtime={info.get('min_qtime')} anchors=[{_fmt}]", file=_sysc.stderr)
                 try:
                     s_idx = get_step_index_in_flow(lot_flow, chain_steps[0])
                     e_idx = get_step_index_in_flow(lot_flow, chain_end_name)
@@ -3577,6 +3637,26 @@ def _coarse_earliest_anchors(
     # 供 schedule() 做智能告警
     _anchor_audit["cycle_lots"] = set(_cycle_lots)
     _anchor_audit["fallback_used"] = (not _converged and bool(_cycle_lots))
+    if os.environ.get("SCHED_TRACE") == "1":
+        import sys as _sysa
+        for _ln in ("real9", "f9"):
+            _lo = lot_by_name.get(_ln)
+            if not _lo:
+                continue
+            _lf = flow_map.get(_lo.product_name)
+            if not _lf:
+                continue
+            try:
+                _ci = get_step_index_in_flow(_lf, _lo.current_step_name)
+            except ValueError:
+                _ci = 0
+            _la = anchors.get(_ln) or []
+            for _ix, _sf in enumerate(_lf[_ci:]):
+                if _sf.step_name in ("A005-R1-UF-BAKE", "A005-R1-UF-PLASMA",
+                                     "A005-R1-UF-DISPENSE", "A005-R1-UF-CURE",
+                                     "A005-P1-UF-BAKE", "A005-P1-UF-PLASMA"):
+                    if _ix < len(_la):
+                        print(f"[RET] {_ln} {_sf.step_name} anchor={_la[_ix]:%m/%d %H:%M}", file=_sysa.stderr)
     return anchors
 
 
@@ -4124,6 +4204,20 @@ def _inject_lead_upstream_refs(lots: list, flow_map: dict) -> None:
             follow = by_name.get(lp.lot2)
             if not follow:
                 continue
+            # 领导批是先导批（pioneer）时跳过上游对齐注入：pioneer 在前跑扫雷，
+            # 其 delay 完全无关紧要、应尽量早做；若还让它等待正式跟随批的紧邻上游，
+            # 会被慢的正式批上游拽回，把整条紧链（PLASMA→DISPENSE→CURE）压到次日
+            # （real9←f9 中 f9 因等 real9.UF-PLASMA 被拖到 09/11，real9 整链随之跨天的根因）。
+            # 先导批自由领跑 + 闸A（正式批不早于先导批完成衔接步）即保证"先导先行、正式尾随"。
+            if getattr(lot, "pioneer", False):
+                print(f"[inject_lead] skip: leader {lp.lot1} is pioneer (run ahead freely)",
+                      file=__import__("sys").stderr)
+                continue
+            # 跟随批是先导批（pioneer）时跳过注入：先导批为此前线扫雷、其 timing 无关紧要，
+            # 若仍让领导批硬等先导批的紧邻上游，会把它拽到先导批（被无关因素）延后后的时刻，
+            # 造成"左脚踩右脚"级联整链延后（real9 被 f9 拖到次日）。
+            if getattr(follow, "pioneer", False):
+                continue
             ff = flow_map.get(follow.product_name)
             if not ff:
                 continue
@@ -4243,9 +4337,12 @@ def _lead_back_shift(
         # 闸A 必须以实际排程为准；此处只做"背靠背"贴齐（lot2 不可早于 lot1 由闸A保证）
         gap_min = (e2.start_time - e1.end_time).total_seconds() / 60.0
         _dbg(f"  gap_min={gap_min:.1f}min lot1.step1=[{e1.start_time:%m/%d %H:%M}->{e1.end_time:%m/%d %H:%M}] lot2.step2=[{e2.start_time:%m/%d %H:%M}->{e2.end_time:%m/%d %H:%M}]")
-        if gap_min < 2.0:
-            _dbg("  -> already back-to-back, skip")
-            continue                            # 已背靠背（差距≤2min）或 lot1 更迟
+        # 背靠背间隙宽放 1.5h（90min）：间隙 ≤90min 视为已背靠背，不再调动任何批次。
+        # 过紧的阈值（原 2min）会让大批次因设备/链条自然拉开的几十小时间隙被反复尝试
+        # 硬贴齐而徒劳空转，反而制造"左脚踩右脚"式的整链级联延后；宽放后只在真正需要时调动。
+        if gap_min < 90.0:
+            _dbg("  -> already back-to-back (<=1.5h), skip")
+            continue                            # 已背靠背（差距≤90min）或 lot1 更迟
         _ord1 = _flow_order.get(lot1.product_name, {})
         if lp.step1 not in _ord1:
             continue
@@ -4295,6 +4392,20 @@ def _lead_back_shift(
         # ---- 分支2：顺延领导批（lot1）——lot1 提前做完产生空闲带，整体后移贴齐 lot2 ----
         if not lot1.lead_pairs:
             _dbg("  branch2 skip: lot1 has no lead_pairs")
+            continue
+        # 【pioneer 守卫（领导侧）】lot1 是随行先导批时不做"顺延领导批贴齐"：先导批在前
+        # 跑扫雷、其 delay 无关紧要，应尽量早做；若仍把先导领导批整体后移去贴齐慢的正式
+        # 跟随批，会把它拖到正式批的时点（real9←f9 中 f9 被 real9 的上游拖到 09/11、
+        # 整条紧链随之跨天的根因）。自由领跑 + 闸A 即已满足"先导先行、正式尾随"。
+        if getattr(lot1, "pioneer", False):
+            _dbg("  branch2 skip: leader lot1 is pioneer, don't drag pioneer leader later")
+            continue
+        # 【pioneer 守卫】lot2 是随行先导批时不做"顺延领导批贴齐"：先导批的 timing 无关紧要
+        # （其前置步骤可能因无关因素被大幅延后），若仍把正式领导批整体后移去贴齐它，
+        # 会把正式批拖到次日（real9 被 f9 拽到 09/11，UF-BAKE 早上做完、剩余步骤隔天）。
+        _foll2 = lot_by_name.get(lp.lot2)
+        if _foll2 is not None and getattr(_foll2, "pioneer", False):
+            _dbg("  branch2 skip: lot2 is pioneer, don't drag formal leader later")
             continue
         other = _other_intervals(lp.lot1)
         shift_d = timedelta(minutes=gap_min)
@@ -4403,15 +4514,19 @@ def schedule(
     第二遍在深拷贝的 lots 上运行，避免第一遍 FTF 数量变换把 qty 二次放大。
     """
     import copy as _copy
-    # lead 上游对齐（_inject_lead_upstream_refs）原实现会让【领导批】回头等【跟随批】
-    # 的上游步骤，把高优领导批整体往后拖，并经整链级联把非衔接步（如 DAF-BAKE）拖后
-    # 数天。这与设计文档 §4.2 的初衷（对齐跟随批、不拖领导批）相悖，故停用该注入；
-    # lead 背靠背仍由闸A引用（跟随批不早于领导批）+ _lead_back_shift 回拉保证。
-    # 保留 _inject_lead_upstream_refs 函数定义以便需要时重新启用。
-    # try:
-    #     _inject_lead_upstream_refs(lots, get_product_flow_map(flows))
-    # except Exception:
-    #     pass  # 注入失败不影响排程主流程
+    # lead 上游对齐：让【领导批】的衔接步等待【跟随批】紧邻上游完成，使两批在衔接步
+    # 真正背靠背（相位对齐）。这是 lead/背靠背生效的核心——若停用，领导批自由跑、
+    # 跟随批仅受闸A约束，跨产品批次衔接步会被设备/链条自然拉开十几~几十小时，
+    # 背靠背完全失效（real4←f45 17.98h、real9←f9 39.78h）。
+    # 注意：该注入与 _lead_back_shift 一起使用时，若下游紧跟多个追赶连接，早年会出现
+    # "左脚踩右脚"式整链级联延后；此问题在本版已通过下列手段缓解：
+    #   - _lead_back_shift 间隙宽放至 1.5h（不再对小间隙反复硬贴齐空转）；
+    #   - 紧 Q 链步不再被粗排锚点钳制（避免整条紧链被推入停机窗跨天）。
+    try:
+        if os.environ.get("NO_INJECT", "0") != "1":
+            _inject_lead_upstream_refs(lots, get_product_flow_map(flows))
+    except Exception:
+        pass  # 注入失败不影响排程主流程
     # 保留调用方 lots 的原始快照，供第二遍使用（第一遍可能在 FTF 步骤改动 lot.qty）
     _orig_lots = _copy.deepcopy(lots)
     # 第一遍：不带预测，跑出真实释放时刻
@@ -4880,6 +4995,21 @@ def _run_schedule_pass(
         manual_adjusts=manual_adjusts,
         eqp_constraints=eqp_constraints,
         shift_times=shift_times)
+    for _l in lots:
+        if _l.lot_name in ("f9", "real9"):
+            _f = flow_map.get(_l.product_name)
+            if not _f:
+                continue
+            try:
+                _ci = get_step_index_in_flow(_f, _l.current_step_name)
+            except ValueError:
+                _ci = 0
+            _an = coarse_anchors.get(_l.lot_name, [])
+            import sys as _sys2
+            for _ix, _sf in enumerate(_f[_ci:]):
+                if "UF" in _sf.step_name or "MD-PLASMA" in _sf.step_name:
+                    if _ix < len(_an):
+                        print(f"[ANCHOR] {_l.lot_name} {_sf.step_name} idx={_ix} anchor={_an[_ix]:%m/%d %H:%M}", file=_sys2.stderr)
 
     # ---- 引用环内的 reference 预测释放 ----
     # 环内 lot 互相等待（A 等 B 完成、B 又等 A 完成）时，贪婪排程阶段无法得到
