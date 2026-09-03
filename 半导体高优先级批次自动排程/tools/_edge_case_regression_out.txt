@@ -1,0 +1,1706 @@
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 14:44->08/18 15:23] lot2.step2=[08/18 15:23->08/18 16:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 00:08->08/21 00:13] lot2.step2=[08/21 00:13->08/21 00:16]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 09:33->08/20 11:07] lot2.step2=[08/20 11:07->08/20 12:55]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 10:16->08/19 10:55] lot2.step2=[08/19 10:55->08/19 12:28]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 02:52->08/22 02:57] lot2.step2=[08/22 02:57->08/22 03:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 09:33->08/21 11:07] lot2.step2=[08/21 11:07->08/21 13:09]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 14:44->08/18 15:23] lot2.step2=[08/18 15:23->08/18 16:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 00:08->08/21 00:13] lot2.step2=[08/21 00:13->08/21 00:16]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 09:33->08/20 11:07] lot2.step2=[08/20 11:07->08/20 12:55]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 10:16->08/19 10:55] lot2.step2=[08/19 10:55->08/19 12:28]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 02:52->08/22 02:57] lot2.step2=[08/22 02:57->08/22 03:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 09:33->08/21 11:07] lot2.step2=[08/21 11:07->08/21 13:09]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 14:44->08/18 15:23] lot2.step2=[08/18 15:23->08/18 16:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 00:08->08/21 00:13] lot2.step2=[08/21 00:13->08/21 00:16]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 09:33->08/20 11:07] lot2.step2=[08/20 11:07->08/20 12:55]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 10:16->08/19 10:55] lot2.step2=[08/19 10:55->08/19 12:28]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 02:52->08/22 02:57] lot2.step2=[08/22 02:57->08/22 03:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 09:33->08/21 11:07] lot2.step2=[08/21 11:07->08/21 13:09]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 14:44->08/18 15:23] lot2.step2=[08/18 15:23->08/18 16:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 00:08->08/21 00:13] lot2.step2=[08/21 00:13->08/21 00:16]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 09:33->08/20 11:07] lot2.step2=[08/20 11:07->08/20 12:55]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 10:16->08/19 10:55] lot2.step2=[08/19 10:55->08/19 12:28]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 02:52->08/22 02:57] lot2.step2=[08/22 02:57->08/22 03:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 09:33->08/21 11:07] lot2.step2=[08/21 11:07->08/21 13:09]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 14:44->08/18 15:23] lot2.step2=[08/18 15:23->08/18 16:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 00:08->08/21 00:13] lot2.step2=[08/21 00:13->08/21 00:16]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 09:33->08/20 11:07] lot2.step2=[08/20 11:07->08/20 12:55]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 10:16->08/19 10:55] lot2.step2=[08/19 10:55->08/19 12:28]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 02:52->08/22 02:57] lot2.step2=[08/22 02:57->08/22 03:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 09:33->08/21 11:07] lot2.step2=[08/21 11:07->08/21 13:09]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 14:44->08/18 15:23] lot2.step2=[08/18 15:23->08/18 16:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 00:08->08/21 00:13] lot2.step2=[08/21 00:13->08/21 00:16]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 09:33->08/20 11:07] lot2.step2=[08/20 11:07->08/20 12:55]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 10:16->08/19 10:55] lot2.step2=[08/19 10:55->08/19 12:28]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 02:52->08/22 02:57] lot2.step2=[08/22 02:57->08/22 03:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 09:33->08/21 11:07] lot2.step2=[08/21 11:07->08/21 13:09]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 14:44->08/18 15:23] lot2.step2=[08/18 15:23->08/18 16:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 00:08->08/21 00:13] lot2.step2=[08/21 00:13->08/21 00:16]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 09:33->08/20 11:07] lot2.step2=[08/20 11:07->08/20 12:55]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 10:16->08/19 10:55] lot2.step2=[08/19 10:55->08/19 12:28]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 02:52->08/22 02:57] lot2.step2=[08/22 02:57->08/22 03:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 09:33->08/21 11:07] lot2.step2=[08/21 11:07->08/21 13:09]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 14:44->08/18 15:23] lot2.step2=[08/18 15:23->08/18 16:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 00:08->08/21 00:13] lot2.step2=[08/21 00:13->08/21 00:16]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 09:33->08/20 11:07] lot2.step2=[08/20 11:07->08/20 12:55]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 10:16->08/19 10:55] lot2.step2=[08/19 10:55->08/19 12:28]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 02:52->08/22 02:57] lot2.step2=[08/22 02:57->08/22 03:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 09:33->08/21 11:07] lot2.step2=[08/21 11:07->08/21 13:09]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 14:44->08/18 15:23] lot2.step2=[08/18 15:23->08/18 16:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 00:08->08/21 00:13] lot2.step2=[08/21 00:13->08/21 00:16]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 09:33->08/20 11:07] lot2.step2=[08/20 11:07->08/20 12:55]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 10:16->08/19 10:55] lot2.step2=[08/19 10:55->08/19 12:28]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 02:52->08/22 02:57] lot2.step2=[08/22 02:57->08/22 03:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 09:33->08/21 11:07] lot2.step2=[08/21 11:07->08/21 13:09]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 14:44->08/18 15:23] lot2.step2=[08/18 15:23->08/18 16:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 00:08->08/21 00:13] lot2.step2=[08/21 00:13->08/21 00:16]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 09:33->08/20 11:07] lot2.step2=[08/20 11:07->08/20 12:55]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 10:16->08/19 10:55] lot2.step2=[08/19 10:55->08/19 12:28]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 02:52->08/22 02:57] lot2.step2=[08/22 02:57->08/22 03:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 09:33->08/21 11:07] lot2.step2=[08/21 11:07->08/21 13:09]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 13:17->08/18 13:55] lot2.step2=[08/18 13:55->08/18 15:01]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 11:44->08/21 11:49] lot2.step2=[08/21 11:49->08/21 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 10:26->08/20 12:00] lot2.step2=[08/20 12:00->08/20 13:49]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+死锁环已用预测释放打破: ['A5', 'B5']
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-FC-REFLOW -> real1 A005-R1-FC-REFLOW lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/17 11:46->08/17 13:17] lot2.step2=[08/17 13:17->08/17 15:22]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-UF-DISPENSE -> real1 A005-R1-UF-DISPENSE lead_id lead1
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 09:45->08/18 10:23] lot2.step2=[08/18 10:23->08/18 11:29]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-BG2-INSP2-REV -> real1 A005-R1-BG2-PRE-INSP lead_id lead2
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/20 16:28->08/20 16:33] lot2.step2=[08/20 16:33->08/20 16:36]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC1 A005-P1-MD-MOLDING -> real1 A005-R1-MD-MOLDING lead_id lead6
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 15:54->08/19 17:28] lot2.step2=[08/19 17:28->08/19 19:17]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-FC-REFLOW -> real2 A005-R1-FC-REFLOW lead_id lead3
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/18 11:47->08/18 13:18] lot2.step2=[08/18 13:18->08/18 15:58]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-UF-DISPENSE -> real2 A005-R1-UF-DISPENSE lead_id lead4
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/19 09:45->08/19 10:23] lot2.step2=[08/19 10:23->08/19 11:57]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-BG2-INSP2-REV -> real2 A005-R1-BG2-PRE-INSP lead_id lead5
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/22 11:44->08/22 11:49] lot2.step2=[08/22 11:49->08/22 11:52]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead PC2 A005-P1-MD-MOLDING -> real2 A005-R1-MD-MOLDING lead_id lead7
+[lead_back_shift]   gap_min=0.0min lot1.step1=[08/21 10:26->08/21 12:00] lot2.step2=[08/21 12:00->08/21 14:03]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+
+===== T1 正常: 3独立lot 同起点(FTF链,交接班/禁机约束) =====
+  valid=8/8  errs=0
+  warnings(0):
+  PASS: T1 正常: 3独立lot 同起点(FTF链,交接班/禁机约束): 无雪崩(全部步骤 < 14天)
+  PASS: T1 正常: 3独立lot 同起点(FTF链,交接班/禁机约束): 全量校验 0 错误
+  PASS: T1 正常: 3独立lot 同起点(FTF链,交接班/禁机约束): 有效轮次 >= 1
+    L1: 首站 A006-R1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-R1-FTF-OPUT-PACK 09/02 01:10
+    L2: 首站 A006-D1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-D1-FTF-OPUT-PACK 09/02 02:52
+    L3: 首站 A006-R1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-R1-FTF-OPUT-PACK 09/02 17:12
+
+===== T2 循环引用+松Q+交接班: IOU1(13)↔IOU1-f(3) =====
+  valid=8/8  errs=0
+  warnings(1):
+    * 引用环检测：lot_constraints 中 IOU1, IOU1-f 互相引用（互相等待对方某步），若不满足收敛条件会被无限推迟；请核对配置是否确实需要互为前置。
+  PASS: T2 循环引用+松Q+交接班: IOU1(13)↔IOU1-f(3): 无雪崩(全部步骤 < 14天)
+  PASS: T2 循环引用+松Q+交接班: IOU1(13)↔IOU1-f(3): 全量校验 0 错误
+  PASS: T2 循环引用+松Q+交接班: IOU1(13)↔IOU1-f(3): 有效轮次 >= 1
+    IOU1: 首站 A006-R1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-R1-FTF-OPUT-PACK 09/02 19:51
+    IOU1-f: 首站 A006-D1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-D1-FTF-OPUT-PACK 09/01 21:42
+  PASS: T2: IOU1.MOUNT 当天完成(非雪崩)
+  PASS: T2: IOU1-f.FTF 当天完成
+
+===== T3 循环引用+紧Q(UF240)+手动延迟+恒组批CURE单机: PC↔real =====
+  valid=16/16  errs=0
+  warnings(0):
+  PASS: T3 循环引用+紧Q(UF240)+手动延迟+恒组批CURE单机: PC↔real: 无雪崩(全部步骤 < 14天)
+  PASS: T3 循环引用+紧Q(UF240)+手动延迟+恒组批CURE单机: PC↔real: 全量校验 0 错误
+  PASS: T3 循环引用+紧Q(UF240)+手动延迟+恒组批CURE单机: PC↔real: 有效轮次 >= 1
+    PC1: 首站 A005-P1-FC-DUMMY 08/17 09:30  末站 A005-P1-OQC2-BANK 08/22 08:25
+    PC2: 首站 A005-P1-FC-DUMMY 08/18 09:30  末站 A005-P1-OQC2-BANK 08/23 08:25
+    real1: 首站 A005-R1-AB1IQC-WFS 08/17 09:30  末站 A005-R1-DB2-TRAN 08/22 22:47
+    real2: 首站 A005-R1-AB1IQC-WFS 08/18 09:30  末站 A005-R1-DB2-TRAN 08/24 03:27
+
+===== T4 两对环+独立lot: IOU1对 + ION1对 + SOLO =====
+  valid=8/8  errs=0
+  warnings(1):
+    * 引用环检测：lot_constraints 中 ION1, ION1-f, IOU1, IOU1-f 互相引用（互相等待对方某步），若不满足收敛条件会被无限推迟；请核对配置是否确实需要互为前置。
+  PASS: T4 两对环+独立lot: IOU1对 + ION1对 + SOLO: 无雪崩(全部步骤 < 14天)
+  PASS: T4 两对环+独立lot: IOU1对 + ION1对 + SOLO: 全量校验 0 错误
+  PASS: T4 两对环+独立lot: IOU1对 + ION1对 + SOLO: 有效轮次 >= 1
+    ION1: 首站 A007-R1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A007-R1-FTF-OPUT-PACK 09/02 05:41
+    ION1-f: 首站 A007-D1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A007-D1-FTF-OPUT-PACK 09/01 23:18
+    IOU1: 首站 A006-R1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-R1-FTF-OPUT-PACK 09/03 02:15
+    IOU1-f: 首站 A006-D1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-D1-FTF-OPUT-PACK 09/01 23:12
+    SOLO: 首站 A006-R1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-R1-FTF-OPUT-PACK 09/02 10:54
+
+===== T5 真·循环(同step互等): A5.FTF↔B5.FTF =====
+  valid=8/8  errs=0
+  warnings(2):
+    * 引用环检测：lot_constraints 中 A5, B5 互相引用（互相等待对方某步），若不满足收敛条件会被无限推迟；请核对配置是否确实需要互为前置。
+    * 引用环雪崩已发生：A5, B5 的相互等待导致锚点被无限推迟，已自动采用'自然就绪时刻'回退打破雪崩（结果按各 lot 自身最早可达时间排程）。
+  PASS: T5 真·循环(同step互等): A5.FTF↔B5.FTF: 无雪崩(全部步骤 < 14天)
+  PASS: T5 真·循环(同step互等): A5.FTF↔B5.FTF: 全量校验 0 错误
+  PASS: T5 真·循环(同step互等): A5.FTF↔B5.FTF: 有效轮次 >= 1
+    A5: 首站 A006-R1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-R1-FTF-OPUT-PACK 09/02 07:16
+    B5: 首站 A006-D1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-D1-FTF-OPUT-PACK 09/02 06:15
+  PASS: T5: 环雪崩回退被识别并告警
+
+===== T6 紧Q链(UF240)钉在交接班/禁机边界: real1.DISPENSE->21:00 =====
+  valid=8/8  errs=0
+  warnings(0):
+  PASS: T6 紧Q链(UF240)钉在交接班/禁机边界: real1.DISPENSE->21:00: 无雪崩(全部步骤 < 14天)
+  PASS: T6 紧Q链(UF240)钉在交接班/禁机边界: real1.DISPENSE->21:00: 全量校验 0 错误
+  PASS: T6 紧Q链(UF240)钉在交接班/禁机边界: real1.DISPENSE->21:00: 有效轮次 >= 1
+    PC1: 首站 A005-P1-FC-DUMMY 08/17 09:30  末站 A005-P1-OQC2-BANK 08/21 13:28
+    PC2: 首站 A005-P1-FC-DUMMY 08/18 09:30  末站 A005-P1-OQC2-BANK 08/23 08:25
+    real1: 首站 A005-R1-AB1IQC-WFS 08/17 09:30  末站 A005-R1-DB2-TRAN 08/22 12:38
+    real2: 首站 A005-R1-AB1IQC-WFS 08/18 09:30  末站 A005-R1-DB2-TRAN 08/24 03:27
+
+===== T7 三lot环: C7→D7→E7→C7 =====
+  valid=8/8  errs=0
+  warnings(1):
+    * 引用环检测：lot_constraints 中 C7, D7, E7 互相引用（互相等待对方某步），若不满足收敛条件会被无限推迟；请核对配置是否确实需要互为前置。
+  PASS: T7 三lot环: C7→D7→E7→C7: 无雪崩(全部步骤 < 14天)
+  PASS: T7 三lot环: C7→D7→E7→C7: 全量校验 0 错误
+  PASS: T7 三lot环: C7→D7→E7→C7: 有效轮次 >= 1
+    C7: 首站 A006-R1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-R1-FTF-OPUT-PACK 09/02 01:04
+    D7: 首站 A006-D1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-D1-FTF-OPUT-PACK 09/01 22:54
+    E7: 首站 A006-R1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-R1-FTF-OPUT-PACK 09/01 19:47
+  PASS: T7: 三个环内 lot 步骤完整(各15步)
+
+===== T8 环外引用环内: OUT8 等 IOU1.FTF 完成 =====
+  valid=8/8  errs=0
+  warnings(1):
+    * 引用环检测：lot_constraints 中 IOU1, IOU1-f 互相引用（互相等待对方某步），若不满足收敛条件会被无限推迟；请核对配置是否确实需要互为前置。
+  PASS: T8 环外引用环内: OUT8 等 IOU1.FTF 完成: 无雪崩(全部步骤 < 14天)
+  PASS: T8 环外引用环内: OUT8 等 IOU1.FTF 完成: 全量校验 0 错误
+  PASS: T8 环外引用环内: OUT8 等 IOU1.FTF 完成: 有效轮次 >= 1
+    IOU1: 首站 A006-R1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-R1-FTF-OPUT-PACK 09/02 19:51
+    IOU1-f: 首站 A006-D1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-D1-FTF-OPUT-PACK 09/01 21:42
+    OUT8: 首站 A006-R1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-R1-FTF-OPUT-PACK 09/03 03:10
+  PASS: T8: OUT8.FTF ≥ IOU1.FTF 完成
+
+===== T9 两对同产品环共享单机(PKFFS002): IOU1对+IOU2对 =====
+  valid=8/8  errs=0
+  warnings(1):
+    * 引用环检测：lot_constraints 中 IOU1, IOU1-f, IOU2, IOU2-f 互相引用（互相等待对方某步），若不满足收敛条件会被无限推迟；请核对配置是否确实需要互为前置。
+  PASS: T9 两对同产品环共享单机(PKFFS002): IOU1对+IOU2对: 无雪崩(全部步骤 < 14天)
+  PASS: T9 两对同产品环共享单机(PKFFS002): IOU1对+IOU2对: 全量校验 0 错误
+  PASS: T9 两对同产品环共享单机(PKFFS002): IOU1对+IOU2对: 有效轮次 >= 1
+    IOU1: 首站 A006-R1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-R1-FTF-OPUT-PACK 09/03 06:11
+    IOU1-f: 首站 A006-D1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-D1-FTF-OPUT-PACK 09/01 22:12
+    IOU2: 首站 A006-R1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-R1-FTF-OPUT-PACK 09/02 14:46
+    IOU2-f: 首站 A006-D1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-D1-FTF-OPUT-PACK 09/02 03:58
+  PASS: T9: 四 lot 步骤完整(各15步)
+
+===== T10 环内pin: IOU1-f.FTF->09/01 14:00 =====
+  valid=8/8  errs=0
+  warnings(1):
+    * 引用环检测：lot_constraints 中 IOU1, IOU1-f 互相引用（互相等待对方某步），若不满足收敛条件会被无限推迟；请核对配置是否确实需要互为前置。
+  PASS: T10 环内pin: IOU1-f.FTF->09/01 14:00: 无雪崩(全部步骤 < 14天)
+  PASS: T10 环内pin: IOU1-f.FTF->09/01 14:00: 全量校验 0 错误
+  PASS: T10 环内pin: IOU1-f.FTF->09/01 14:00: 有效轮次 >= 1
+    IOU1: 首站 A006-R1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-R1-FTF-OPUT-PACK 09/02 23:33
+    IOU1-f: 首站 A006-D1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-D1-FTF-OPUT-PACK 09/02 00:30
+  PASS: T10: pin 精确命中 14:00
+
+===== T11 环+FTF qty变化(392→351): IOU1↔IOU1-f =====
+  valid=8/8  errs=0
+  warnings(1):
+    * 引用环检测：lot_constraints 中 IOU1, IOU1-f 互相引用（互相等待对方某步），若不满足收敛条件会被无限推迟；请核对配置是否确实需要互为前置。
+  PASS: T11 环+FTF qty变化(392→351): IOU1↔IOU1-f: 无雪崩(全部步骤 < 14天)
+  PASS: T11 环+FTF qty变化(392→351): IOU1↔IOU1-f: 全量校验 0 错误
+  PASS: T11 环+FTF qty变化(392→351): IOU1↔IOU1-f: 有效轮次 >= 1
+    IOU1: 首站 A006-R1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-R1-FTF-OPUT-PACK 09/02 19:51
+    IOU1-f: 首站 A006-D1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-D1-FTF-OPUT-PACK 09/01 21:42
+
+===== T12 四lot长环跨3产品: A12→B12→C12→D12→A12 =====
+  valid=8/8  errs=0
+  warnings(1):
+    * 引用环检测：lot_constraints 中 A12, B12, C12, D12 互相引用（互相等待对方某步），若不满足收敛条件会被无限推迟；请核对配置是否确实需要互为前置。
+  PASS: T12 四lot长环跨3产品: A12→B12→C12→D12→A12: 无雪崩(全部步骤 < 14天)
+  PASS: T12 四lot长环跨3产品: A12→B12→C12→D12→A12: 全量校验 0 错误
+  PASS: T12 四lot长环跨3产品: A12→B12→C12→D12→A12: 有效轮次 >= 1
+    A12: 首站 A006-R1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-R1-FTF-OPUT-PACK 09/02 05:52
+    B12: 首站 A006-D1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A006-D1-FTF-OPUT-PACK 09/02 03:43
+    C12: 首站 A007-R1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A007-R1-FTF-OPUT-PACK 09/02 00:44
+    D12: 首站 A007-D1-FTF-INPUT-TO-OUTPUT 09/01 09:30  末站 A007-D1-FTF-OPUT-PACK 09/01 22:07
+  PASS: T12: 四 lot 步骤完整(各15步)
+
+========== SUMMARY: 44/44 passed, 0 failed ==========

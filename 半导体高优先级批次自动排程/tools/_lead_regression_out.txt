@@ -1,0 +1,49 @@
+[lead_back_shift] === lead LEAD DISPENSE -> FOLLOW DISPENSE lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[09/01 14:10->09/01 15:40] lot2.step2=[09/01 15:40->09/01 17:10]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+[lead_back_shift] === lead LEAD DISPENSE -> FOLLOW DISPENSE lead_id lead0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[09/01 12:10->09/01 12:40] lot2.step2=[09/01 12:40->09/01 13:10]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+死锁环已用预测释放打破: ['LEAD', 'FOLLOW']
+[lead_back_shift] === lead FOLLOW DISPENSE -> LEAD DISPENSE lead_id r0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[09/01 12:50->09/01 13:20] lot2.step2=[09/01 13:20->09/01 13:50]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+死锁环已用预测释放打破: ['LEAD', 'FOLLOW']
+[lead_back_shift] === lead FOLLOW DISPENSE -> LEAD DISPENSE lead_id u0
+[lead_back_shift]   gap_min=0.0min lot1.step1=[09/01 12:50->09/01 13:20] lot2.step2=[09/01 13:20->09/01 13:50]
+[lead_back_shift]   -> already back-to-back (<=1.5h), skip
+
+=== test_lead_invariant ===
+  PASS: lead: 两批 4 步齐全
+  PASS: lead: 全量校验 0 错误
+  PASS: lead: 闸A FOLLOW.DISPENSE.start >= LEAD.DISPENSE.end
+
+=== test_lead_no_ring_warning ===
+  PASS: lead: 无'引用环'误告警
+
+=== test_lead_back_shift ===
+  PASS: backshift: 回拉后背靠背 (gap<=2min)
+  PASS: backshift: 比对照组更贴近 (gap < gap0)
+  PASS: backshift: 闸A FOLLOW.DISPENSE.start >= LEAD.DISPENSE.end
+  PASS: backshift: 全量校验 0 错误
+
+=== test_lead_health_check ===
+  PASS: health: 干净 lead 0 告警
+  PASS: health: 配套批缺失告警
+  PASS: health: 流程异构告警
+  PASS: health: lead+引用成环告警
+  PASS: health: 热启动太靠后告警
+
+=== test_lead_loader_role_swap ===
+  PASS: loader: 闸A 挂到跟随批 lot1(LEAD) 等 领导批 FOLLOW.DISPENSE
+  PASS: loader: LeadPair 内部交换 (lot1=FOLLOW领导, lot2=LEAD跟随)
+  PASS: loader: 反转后排程 0 错误
+  PASS: loader: 反转后闸A LEAD.DISPENSE.start >= FOLLOW.DISPENSE.end
+
+=== test_lead_upstream_edge ===
+  PASS: upstream: 领导批补上游对齐边 (FOLLOW.DISPENSE 等 LEAD.PLASMA)
+  PASS: upstream: 排程 0 错误
+  PASS: upstream: 领导批 DISPENSE 不早于跟随批 PLASMA 完成（上游对齐生效）
+  PASS: upstream: 背靠背 gap<=2min
+
+SUMMARY: 21/21 passed, 0 failed
