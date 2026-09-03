@@ -676,7 +676,7 @@ function h(str) {
 }
 
 // 渲染单个单元格，支持静态下拉、动态下拉（依赖同行其他列）、日历控件与「是否生效」勾选
-function renderCell(table, col, value, row) {
+function renderCell(table, col, value, row, rowIdx) {
   // 0. 「是否生效」勾选框列
   if (col === ENABLE_COL) {
     const checked = isEnabledCellValue(value) ? ' checked' : '';
@@ -699,7 +699,8 @@ function renderCell(table, col, value, row) {
     if (dyn.type === 'select') {
       return '<td><select class="cell-select">' + opts + '</select></td>';
     }
-    const listId = 'dl_dyn_' + table.replace(/[^a-zA-Z0-9]/g, '_') + '_' + col;
+    // 每行生成唯一 datalist id，避免多行 input 引用同一 datalist 而只显示第一行的选项
+    const listId = 'dl_dyn_' + table.replace(/[^a-zA-Z0-9]/g, '_') + '_' + col + '_r' + (rowIdx ?? 0);
     return '<td><input class="cell-input" list="' + listId + '" value="' + h(String(value ?? '')) + '">' +
            '<datalist id="' + listId + '">' + opts + '</datalist></td>';
   }
@@ -795,7 +796,7 @@ function renderTableBody() {
     var cls = (origIdx === selectedRow) ? 'selected' : '';
     return '<tr class="' + cls + '" data-row="' + origIdx + '">' +
       '<td class="col-seq">' + (displayIdx + 1) + '</td>' +
-      columns.map(c => renderCell(currentTable, c, row[c], row)).join('') +
+      columns.map(c => renderCell(currentTable, c, row[c], row, origIdx)).join('') +
       '</tr>';
   }).join('');
 }
