@@ -4210,8 +4210,9 @@ def _inject_lead_upstream_refs(lots: list, flow_map: dict) -> None:
             # （real9←f9 中 f9 因等 real9.UF-PLASMA 被拖到 09/11，real9 整链随之跨天的根因）。
             # 先导批自由领跑 + 闸A（正式批不早于先导批完成衔接步）即保证"先导先行、正式尾随"。
             if getattr(lot, "pioneer", False):
-                print(f"[inject_lead] skip: leader {lp.lot1} is pioneer (run ahead freely)",
-                      file=__import__("sys").stderr)
+                if os.environ.get("SCHED_TRACE") == "1":
+                    print(f"[inject_lead] skip: leader {lp.lot1} is pioneer (run ahead freely)",
+                          file=__import__("sys").stderr)
                 continue
             # 跟随批是先导批（pioneer）时跳过注入：先导批为此前线扫雷、其 timing 无关紧要，
             # 若仍让领导批硬等先导批的紧邻上游，会把它拽到先导批（被无关因素）延后后的时刻，
@@ -4322,8 +4323,10 @@ def _lead_back_shift(
         return True
 
     import sys as _sys
+    _lead_dbg_on = os.environ.get("SCHED_TRACE") == "1"
     def _dbg(*a):
-        print("[lead_back_shift]", *a, file=_sys.stderr)
+        if _lead_dbg_on:
+            print("[lead_back_shift]", *a, file=_sys.stderr)
     for lp in lead_pairs:
         _dbg("=== lead", lp.lot1, lp.step1, "->", lp.lot2, lp.step2, "lead_id", getattr(lp,'lead_id',''))
         lot1 = lot_by_name.get(lp.lot1)
@@ -4996,7 +4999,7 @@ def _run_schedule_pass(
         eqp_constraints=eqp_constraints,
         shift_times=shift_times)
     for _l in lots:
-        if _l.lot_name in ("f9", "real9"):
+        if os.environ.get("SCHED_TRACE") == "1" and _l.lot_name in ("f9", "real9"):
             _f = flow_map.get(_l.product_name)
             if not _f:
                 continue
@@ -5232,10 +5235,11 @@ def _run_schedule_pass(
                         _rel_base = max(schedule_start, _src.start_time)
                     ref_release_times[lot.lot_name][ref_key] = _ref_release_offset(
                         _rel_base, ref.start_mod, shift_times)
-                    logger.warning(
-                        "引用 %s -> %s.%s 源步骤已越过/不在排程，视为已满足（预释放 %s）",
-                        lot.lot_name, ref.reference_lot, ref.reference_step or "",
-                        ref_release_times[lot.lot_name][ref_key])
+                    if os.environ.get("SCHED_TRACE") == "1":
+                        logger.warning(
+                            "引用 %s -> %s.%s 源步骤已越过/不在排程，视为已满足（预释放 %s）",
+                            lot.lot_name, ref.reference_lot, ref.reference_step or "",
+                            ref_release_times[lot.lot_name][ref_key])
                     continue
                 pending_refs[lot.lot_name].add(ref_key)
                 reference_deps.setdefault(ref_key, []).append(lot.lot_name)
