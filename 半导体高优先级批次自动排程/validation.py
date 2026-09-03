@@ -250,10 +250,15 @@ def _check_lead(
     lot_entries: list[ScheduleEntry],
     lots: list[Lot],
 ) -> list[str]:
-    """lead 终检：闸A——lot2(配套).step2 不得早于 lot1(领导).step1 完成。
+    """lead 终检（硬约束）：lot1(领导/先导批) 与 lot2(配套/正式批) 在衔接步处衔接。
 
-    逐 Q 不超已由 validate_schedule 第 3 步（_check_qtime_from_entries 全量重算）覆盖，
-    此处只补闸A 的硬性违背检查。
+    语义（用户确认，2026-09-03）：先导批作为"排雷手"先完成衔接步，正式批在其后
+    "冗余带"内衔接（默认 1.5h）。两条硬闸：
+      - 闸A：lot2.step2 不得早于 lot1.step1 完成（正式批不超前）。
+      - 闸B：lot2.step2.start − lot1.step1.end ≤ LEAD_BACK_GAP_TOLERANCE_MIN
+            （先导批完成后，正式批必须在冗余带内开始；超过即硬性违背）。
+
+    逐 Q 不超已由 validate_schedule 第 3 步（_check_qtime_from_entries 全量重算）覆盖。
     """
     errors: list[str] = []
     by_lot_step = {(e.lot_name, e.step_name): e for e in lot_entries}
@@ -267,6 +272,13 @@ def _check_lead(
                 errors.append(
                     f"lead 违背(闸A): {lp.lot2}.{lp.step2} 开始 {e2.start_time} "
                     f"早于领导批 {lp.lot1}.{lp.step1} 完成 {e1.end_time}")
+                continue
+            gap_min = (e2.start_time - e1.end_time).total_seconds() / 60.0
+            if gap_min > LEAD_BACK_GAP_TOLERANCE_MIN + 1e-6:
+                errors.append(
+                    f"lead 违背(闸B): {lp.lot1}.{lp.step1} 完成 {e1.end_time} 后，"
+                    f"{lp.lot2}.{lp.step2} 开始 {e2.start_time} 间隔{gap_min:.0f}min "
+                    f"> 冗余带{LEAD_BACK_GAP_TOLERANCE_MIN:.0f}min")
     return errors
 
 
@@ -358,8 +370,15 @@ def _qtime_margin_benefit(rel: float) -> float:
 #   - margin < safe（缺口区）：重罚，越接近 0 罚分越大，逼近一次超Q违规的量级。
 _MARGIN_REWARD_CAP = 20.0    # 达标区单链奖励上限（分钟）
 _ZERO_MARGIN_PENALTY = 1e6   # 余量=0 时单链罚分基数（分钟）：≈ 超Q违规（_PENALTY_PER_ERR）的量级
-LEAD_GAP_BASELINE_MIN = 60.0   # lead 背靠背软约束基准间隙（分钟）：≤1h 不罚
-LEAD_GAP_COST_PER_MIN = 0.08   # 超基准每 1 分钟罚分（软惩罚，轻微，引导不离太远）
+
+# lead 衔接冗余带（分钟，硬约束）：先导批(领导)完成衔接步后，正式批(跟随)必须在
+# 该冗余带内开始（默认 1.5h=90min）。超过即硬性违背（见 _check_lead 闸B），不进入
+# 目标函数权重。可通过环境变量 LEAD_BACK_GAP_TOLERANCE_MIN 覆盖，须与 scheduler.py
+# 中的同名常量保持一致。
+try:
+    LEAD_BACK_GAP_TOLERANCE_MIN = float(os.environ.get("LEAD_BACK_GAP_TOLERANCE_MIN", "90"))
+except Exception:
+    LEAD_BACK_GAP_TOLERANCE_MIN = 90.0
 
 
 def compute_objective(
@@ -450,13 +469,11 @@ def compute_objective(
                                    qtime_min_margin_min)
                         rel = m / safe if safe > 0 else 1.0
                         _rels.append(rel)
-                        if rel >= 1:
-                            # 达标区：微小奖励（减分），渐近饱和于 _MARGIN_REWARD_CAP
-                            qtime_margin_term -= _MARGIN_REWARD_CAP * (1.0 - 1.0 / rel)
-                        else:
-                            # 缺口区：重罚（立方放大），margin→0 逼近超Q违规量级
-                            qtime_margin_term += qtime_shortfall_gradient * _ZERO_MARGIN_PENALTY * (
-                                (1.0 - rel) ** 3)
+                        # （2026-09-03 移除缺口区重罚）不超Q由构造期硬机制保证，目标回归
+                        # "加权总完工时间最短"；此处只记录"余量低于安全余量"的清单供告警展示，
+                        # 不再把它折入目标得分 —— 否则一星半点的余量缺口会被放大成 1e6 级罚分，
+                        # 诱使优化器把批次推到隔天去攒大余量（用户反馈"为不超Q被推后好多天"根因）。
+                        if rel < 1.0:
                             _violations.append(
                                 f"{ln} {qs}→{qe} 余量{m:.0f}min<安全{safe:.0f}min")
                         break
@@ -467,19 +484,14 @@ def compute_objective(
 
     score = weighted_total
 
-    # ---- lead 背靠背软约束（仅罚分，不强制）----
-    # 用户设定：背靠背是软约束，给一个基准（如 1h），衔接步靠得远则小幅惩罚，但不用太狠。
-    # 该惩罚仅引导优化器把被 lead 约束的批次衔接步拉近，不会硬性拖后正式批。
-    # 基准 LEAD_GAP_BASELINE_MIN=60min；超基准每超 1min 罚 LEAD_GAP_COST_PER_MIN 分。
+    # ---- lead 衔接：硬约束已由 _check_lead 闸A/闸B 全程校验（不是权重）。----
+    # 2026-09-03：lead 从"目标函数软权重"改回"构造期硬约束 + 可调冗余带"。
+    # 这里只统计实际衔接间隙供诊断/前端展示，不折入得分。
     lead_back_to_back_term = 0.0
     lead_back_to_back_gap = 0.0
     try:
         if any(getattr(l, "lead_pairs", None) or [] for l in lots):
             lead_back_to_back_gap = _lead_back_to_back_gap_minutes(lot_entries, lots)
-            n_leads = sum(1 for l in lots for _ in (l.lead_pairs or []))
-            over = lead_back_to_back_gap - LEAD_GAP_BASELINE_MIN * n_leads
-            if over > 0:
-                lead_back_to_back_term = LEAD_GAP_COST_PER_MIN * over
     except Exception:
         pass
 

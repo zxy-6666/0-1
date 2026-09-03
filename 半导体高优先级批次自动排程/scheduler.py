@@ -56,6 +56,15 @@ CROSS_SHIFT_AVOID = True  # 紧 Q 链不跨班次（用户规则）：紧链相�
 # Lot 因等待被推出 Q-time（典型如 DISPENSE→CURE=240）。
 BATCH_WAIT_WINDOW = 240
 
+# lead 背靠背冗余带（分钟）：lead 语义为"先导批（领导）先完成衔接步，正式批（跟随）
+# 在其后冗余带内衔接"。冗余带是硬上界——允许先导批完成后"最多"空等 LEAD_BACK_GAP_TOLERANCE_MIN
+# 再让正式批开始；超过该值即视为背靠背违背、硬性问题。默认 1.5h=90min，可通过环境变量
+# LEAD_BACK_GAP_TOLERANCE_MIN 覆盖。
+try:
+    LEAD_BACK_GAP_TOLERANCE_MIN = float(os.environ.get("LEAD_BACK_GAP_TOLERANCE_MIN", "90"))
+except Exception:
+    LEAD_BACK_GAP_TOLERANCE_MIN = 90.0
+
 # 紧链整链块（_tight_chain_defer）单 Lot 连续 defer 上限：整链块放不下时按 +30min 步进等待
 # 设备释放。若某一 Lot 连续达到该次数仍未成功，则放弃整链块（退回拆链/单步调度），保证调度
 # 终止——避免在单机瓶颈（如 UF-CURE 只剩 PKPOV001 一台）下无限磨步把"计算超时"。
@@ -4340,12 +4349,14 @@ def _lead_back_shift(
         # 闸A 必须以实际排程为准；此处只做"背靠背"贴齐（lot2 不可早于 lot1 由闸A保证）
         gap_min = (e2.start_time - e1.end_time).total_seconds() / 60.0
         _dbg(f"  gap_min={gap_min:.1f}min lot1.step1=[{e1.start_time:%m/%d %H:%M}->{e1.end_time:%m/%d %H:%M}] lot2.step2=[{e2.start_time:%m/%d %H:%M}->{e2.end_time:%m/%d %H:%M}]")
-        # 背靠背间隙宽放 1.5h（90min）：间隙 ≤90min 视为已背靠背，不再调动任何批次。
-        # 过紧的阈值（原 2min）会让大批次因设备/链条自然拉开的几十小时间隙被反复尝试
-        # 硬贴齐而徒劳空转，反而制造"左脚踩右脚"式的整链级联延后；宽放后只在真正需要时调动。
-        if gap_min < 90.0:
-            _dbg("  -> already back-to-back (<=1.5h), skip")
-            continue                            # 已背靠背（差距≤90min）或 lot1 更迟
+        # 背靠背冗余带（硬上界）：间隙 ≤ LEAD_BACK_GAP_TOLERANCE_MIN 视为已背靠背，不再调动。
+        # 这是硬约束——间隙超过冗余带就是问题，下面 branch1 会把跟随批前移贴齐先导批，把间隙
+        # 收敛到冗余带内；过紧的阈值会让大批次因设备/链条自然拉开的几十小时间隙被反复尝试
+        # 硬贴齐而徒劳空转，反而制造"左脚踩右脚"式的整链级联延后；冗余带只在该收敛不可行
+        # 时退化为最小间隙，并由 validation 的硬性闸B判定为违规。
+        if gap_min < LEAD_BACK_GAP_TOLERANCE_MIN:
+            _dbg(f"  -> already back-to-back (gap<{LEAD_BACK_GAP_TOLERANCE_MIN:.0f}min), skip")
+            continue                            # 已背靠背（间隙≤冗余带）或 lot1 更迟
         _ord1 = _flow_order.get(lot1.product_name, {})
         if lp.step1 not in _ord1:
             continue
