@@ -25,7 +25,10 @@ def _read_csv(filepath: str, sep: str = "\t") -> pd.DataFrame:
     file_size = os.path.getsize(filepath)
     if file_size == 0:
         return pd.DataFrame()
-    
+
+    def _ret(df: pd.DataFrame) -> pd.DataFrame:
+        return _apply_enable_filter(df)
+
     for encoding in ["utf-8", "utf-8-sig", "gbk", "gb2312", "gb18030", "latin-1"]:
         for delimiter in [sep, ",", ";"]:
             try:
@@ -33,7 +36,7 @@ def _read_csv(filepath: str, sep: str = "\t") -> pd.DataFrame:
                 # 要求至少解析出 2 列才认为分隔符正确；
                 # 否则可能是"用 tab 读逗号文件"只得到 1 列的错误解析
                 if len(df.columns) >= 2:
-                    return df
+                    return _ret(df)
             except (UnicodeDecodeError, UnicodeError):
                 continue
             except pd.errors.EmptyDataError:
@@ -42,10 +45,28 @@ def _read_csv(filepath: str, sep: str = "\t") -> pd.DataFrame:
                 continue
     # 兜底：分隔符自动嗅探（可正确处理单列文件 / 混合分隔符）
     try:
-        return pd.read_csv(filepath, sep=None, engine="python", dtype=str, encoding="utf-8")
+        return _ret(pd.read_csv(filepath, sep=None, engine="python", dtype=str, encoding="utf-8"))
     except Exception:
         pass
     raise Exception(f"无法读取文件 {filepath}，已尝试所有常见编码和分隔符")
+
+
+# 「是否生效」列名及视为“停用”的取值（空值视为生效/默认勾选）。
+_ENABLE_COL = "是否生效"
+_DISABLED_ENABLE_VALUES = {"0", "否", "n", "no", "false", "off"}
+
+
+def _apply_enable_filter(df: "pd.DataFrame") -> "pd.DataFrame":
+    """「是否生效」列过滤：仅保留生效行。
+
+    支持数据管理界面的“是否生效”勾选功能——某行被取消勾选（保存为 0/否）
+    后，加载时即被忽略，但数据仍保留在 CSV 中，之后重新勾选即可恢复。
+    没有该列的表不受影响（flow.csv / step_ct.csv 不启用该功能）。
+    """
+    if df.empty or _ENABLE_COL not in df.columns:
+        return df
+    val = df[_ENABLE_COL].astype(str).str.strip().str.lower()
+    return df[~val.isin(_DISABLED_ENABLE_VALUES)]
 
 
 def parse_datetime(s: Optional[str]) -> Optional[datetime]:

@@ -116,6 +116,18 @@ tbody td.col-seq {
   width: 48px;
 }
 
+/* 「是否生效」勾选框列 */
+tbody td.col-enable {
+  text-align: center;
+  cursor: default;
+}
+tbody td.col-enable input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
 /* 可编辑单元格 */
 td[contenteditable="true"] {
   outline: none;
@@ -449,6 +461,30 @@ const BASIC_TABLES = ['flow.csv', 'step_ct.csv', 'ftf_qty_change.csv', 'priority
 const REGULAR_TABLES = ['eqp_constraint.csv', 'lot_list.csv'];
 const SPECIAL_TABLES = ['lot_constraints.csv', 'manual_adjust.csv', 'special_lot_step.csv', 'step_time_window.csv', 'special_eqp.csv'];
 
+// ── 「是否生效」逐行勾选功能 ──
+// 除 flow.csv / step_ct.csv 外的所有数据表都支持：取消勾选的行虽保留在 CSV 中，
+// 但加载/排程时被忽略；重新勾选后即可恢复，无需删行重建。
+const ENABLE_COL = '是否生效';
+const ENABLE_SUPPORTED = new Set(
+  BASIC_TABLES.concat(REGULAR_TABLES, SPECIAL_TABLES)
+    .filter(n => n !== 'flow.csv' && n !== 'step_ct.csv')
+);
+
+// 视为“停用”的取值（空值/1/是 等视为生效，默认勾选）
+const DISABLED_ENABLE_VALUES = ['0', '否', 'n', 'no', 'false', 'off'];
+function isEnabledCellValue(v) {
+  const s = String(v ?? '').trim().toLowerCase();
+  return !DISABLED_ENABLE_VALUES.includes(s);
+}
+
+// 为受支持的表注入「是否生效」列（默认勾选=1）。仅当列不存在时才注入，避免覆盖已有数据。
+function ensureEnableColumn() {
+  if (!ENABLE_SUPPORTED.has(currentTable)) return;
+  if (columns.includes(ENABLE_COL)) return;
+  columns.push(ENABLE_COL);
+  rows.forEach(r => { if (!(ENABLE_COL in r)) r[ENABLE_COL] = '1'; });
+}
+
 // 下拉列配置：{ 表名: { 列名: { type: 'select'|'datalist', options: [[value, label], ...] } } }
 //  type=select：只能从下拉选；type=datalist：下拉建议 + 允许自由输入
 const DROPDOWN_COLUMNS = {
@@ -623,6 +659,7 @@ async function loadTable(name) {
     currentTable = name;
     selectedRow = -1;
     filters = {};  // 切换表时清空筛选
+    ensureEnableColumn();  // 受支持的表注入「是否生效」列
     renderTable();
     addRowBtn.disabled = false;
     deleteRowBtn.disabled = false;
@@ -638,8 +675,14 @@ function h(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// 渲染单个单元格，支持静态下拉、动态下拉（依赖同行其他列）与日历控件
+// 渲染单个单元格，支持静态下拉、动态下拉（依赖同行其他列）、日历控件与「是否生效」勾选
 function renderCell(table, col, value, row) {
+  // 0. 「是否生效」勾选框列
+  if (col === ENABLE_COL) {
+    const checked = isEnabledCellValue(value) ? ' checked' : '';
+    return '<td class="col-enable"><input type="checkbox" class="cell-enable"' + checked + '></td>';
+  }
+
   // 1. 日历控件列（如 lot_list.start_time）
   if ((DATETIME_LOCAL_COLUMNS[table] || {})[col]) {
     const localVal = toLocalInput(value);
@@ -774,9 +817,12 @@ function collectData() {
     columns.forEach((c, i) => {
       const td = allTds[i + 1];  // 跳过序号列
       if (!td) { rows[origIdx][c] = ''; return; }
+      const cb = td.querySelector('input.cell-enable');
       const sel = td.querySelector('select.cell-select');
       const inp = td.querySelector('input.cell-input');
-      if (sel) {
+      if (cb) {
+        rows[origIdx][c] = cb.checked ? '1' : '0';
+      } else if (sel) {
         rows[origIdx][c] = sel.value;
       } else if (inp) {
         rows[origIdx][c] = (inp.type === 'datetime-local' ? fromLocalInput(inp.value) : inp.value.trim());
@@ -838,6 +884,7 @@ async function uploadFile(file) {
     rows = data.rows;
     selectedRow = -1;
     filters = {};
+    ensureEnableColumn();  // 受支持的表注入「是否生效」列
     renderTable();
     // 设置对应分类的 select 值
     if (BASIC_TABLES.includes(data.name)) {
@@ -919,9 +966,12 @@ tableBody.addEventListener('input', e => {
   const allTds = Array.from(tr.querySelectorAll('td:not(.col-seq)'));
   const colIdx = allTds.indexOf(td);
   if (colIdx < 0 || colIdx >= columns.length) return;
+  const cb = td.querySelector('input.cell-enable');
   const sel = td.querySelector('select.cell-select');
   const inp = td.querySelector('input.cell-input');
-  if (sel) {
+  if (cb) {
+    rows[origIdx][columns[colIdx]] = cb.checked ? '1' : '0';
+  } else if (sel) {
     rows[origIdx][columns[colIdx]] = sel.value;
     // 驱动列（如 product_name / lot1 / lot2 / lot_name）：变化后重渲染，
     // 让依赖它的下拉列（step_name / step1 / step2）选项随之刷新
@@ -939,7 +989,7 @@ tableBody.addEventListener('input', e => {
 // Add row
 addRowBtn.addEventListener('click', () => {
   const newRow = {};
-  columns.forEach(c => { newRow[c] = ''; });
+  columns.forEach(c => { newRow[c] = (c === ENABLE_COL) ? '1' : ''; });
   rows.push(newRow);
   selectedRow = rows.length - 1;
   filters = {};  // 清空筛选，确保新行可见
