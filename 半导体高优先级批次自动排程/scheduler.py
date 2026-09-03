@@ -65,6 +65,15 @@ try:
 except Exception:
     LEAD_BACK_GAP_TOLERANCE_MIN = 90.0
 
+# 调试 trace 目标批次（逗号分隔，默认 f9,real9）：所有 SCHED_TRACE 分支只对这批打印，
+# 可用 SCHED_TRACE_LOTS=real8 等追踪任意批次定位问题。
+_TRACE_LOTS = {s.strip() for s in os.environ.get("SCHED_TRACE_LOTS", "f9,real9").split(",") if s.strip()}
+
+
+def _tl(lot_name: str) -> bool:
+    """该批次是否启用 SCHED_TRACE 详细打印。"""
+    return lot_name in _TRACE_LOTS
+
 # 紧链整链块（_tight_chain_defer）单 Lot 连续 defer 上限：整链块放不下时按 +30min 步进等待
 # 设备释放。若某一 Lot 连续达到该次数仍未成功，则放弃整链块（退回拆链/单步调度），保证调度
 # 终止——避免在单机瓶颈（如 UF-CURE 只剩 PKPOV001 一台）下无限磨步把"计算超时"。
@@ -754,6 +763,8 @@ def _tight_qtime_target_start(
     ref_release_forecast: dict = None,
     manual_adjust_lookup: dict = None,
     pin_lookup: dict = None,
+    special_eqp_map: dict = None,
+    eqp_batch_state: dict = None,
 ) -> object:
     """计算当前 step（作为某 Q-time 起点）应被延迟到的目标开始时间（最晚可行）。
 
@@ -771,6 +782,31 @@ def _tight_qtime_target_start(
       - None:     该 step 不是（需要前看的）Q-time 起点，无需延迟
       - ("DEFER", keys): 端步骤 reference 尚未释放，暂不能调度
     """
+    # 恒组批设备（together=true，如 PKPOV001 CURE）的真实最早可用：其占用记录在
+    # eqp_batch_state/machine_available，不写排他 machine_intervals。若前瞻只用
+    # _find_earliest_slot 查 machine_intervals，会误以为此类设备立即可用，导致
+    # 起点 S 不被推迟、端步骤 E 实际落进批次队尾 → 紧 Q-time 被拉爆（real8
+    # DISPENSE→CURE 超 59min 根因）。这里按真实规则估计：
+    #   恒组批：E 不能并入"已开始"的批次（就绪晚于批次开始即错过），最早 = max(就绪, 上一批结束)；
+    #   并行型特殊设备：到点即入，最早 = 就绪（容量在提交侧校验）；
+    #   普通设备：_find_earliest_slot（排他占用）。
+    def _batch_aware_earliest(eid: str, base: datetime, dur: float) -> datetime:
+        spec = (special_eqp_map or {}).get(eid)
+        if spec is None:
+            return _find_earliest_slot(
+                machine_intervals.get(eid, []), base, timedelta(minutes=dur))
+        if not spec.together:
+            return base
+        bs = (eqp_batch_state or {}).get(eid)
+        busy = None
+        if bs is not None and bs.get("busy_until") is not None:
+            busy = bs["busy_until"]
+        if busy is None:
+            busy = machine_available.get(eid)
+        if busy is not None and busy > base:
+            return busy
+        return base
+
     target_time = None
     rem = state["remaining_steps"]
     si = state["step_index"]
@@ -808,8 +844,7 @@ def _tight_qtime_target_start(
             if _mid_eqps != ["-"] and machine_intervals:
                 _mid_free = datetime.max
                 for _meid in _mid_eqps:
-                    _cand = _find_earliest_slot(
-                        machine_intervals.get(_meid, []), e_ready, timedelta(minutes=mid_ct))
+                    _cand = _batch_aware_earliest(_meid, e_ready, mid_ct)
                     if _cand < _mid_free:
                         _mid_free = _cand
                 if _mid_free != datetime.max and _mid_free > e_ready:
@@ -889,10 +924,7 @@ def _tight_qtime_target_start(
             if eid == "-":
                 cand = e_base
             else:
-                cand = _find_earliest_slot(
-                    machine_intervals.get(eid, []),
-                    e_base,
-                    timedelta(minutes=e_ct))
+                cand = _batch_aware_earliest(eid, e_base, e_ct)
             if cand < e_earliest:
                 e_earliest = cand
                 best_eid = eid
@@ -925,13 +957,12 @@ def _tight_qtime_target_start(
             if fs_eqp != ["-"]:
                 fs_free = datetime.max
                 for _eid in fs_eqp:
-                    _cand = _find_earliest_slot(
-                        machine_intervals.get(_eid, []), base_t, timedelta(minutes=fs_ct))
+                    _cand = _batch_aware_earliest(_eid, base_t, fs_ct)
                     if _cand < fs_free:
                         fs_free = _cand
                 if fs_free != datetime.max and fs_free > req:
                     req = fs_free
-                if os.environ.get("SCHED_TRACE") == "1" and lot.lot_name in ("f9", "real9") \
+                if os.environ.get("SCHED_TRACE") == "1" and _tl(lot.lot_name) \
                         and ("UF-DISPENSE" in fs.step_name or "UF-CURE" in fs.step_name):
                     _fsf = (fs_free.strftime("%m/%d %H:%M") if fs_free != datetime.max else "MAX")
                     print(f"[TRACE-NEST] {lot.lot_name} {fs.step_name} base_t={base_t:%m/%d %H:%M} "
@@ -964,7 +995,7 @@ def _tight_qtime_target_start(
                 req_fs = off - timedelta(minutes=fs_ct) if sm2 == "track out" else off
                 if req_fs > req:
                     req = req_fs
-                if os.environ.get("SCHED_TRACE") == "1" and lot.lot_name in ("f9", "real9") \
+                if os.environ.get("SCHED_TRACE") == "1" and _tl(lot.lot_name) \
                         and ("UF-DISPENSE" in fs.step_name or "UF-CURE" in fs.step_name):
                     print(f" req->{req_fs:%m/%d %H:%M} (dn={dn})", file=__import__("sys").stderr)
             return req
@@ -1083,9 +1114,7 @@ def _tight_qtime_target_start(
                         _s_end_pushed = _s_st_resolved + timedelta(minutes=max(ct, 0))
                         _e_ready_pushed = _s_end_pushed + timedelta(minutes=get_step_wait_time(
                             lot.priority[0], lot.priority[1], priority_wait_map))
-                        _e_after = _find_earliest_slot(
-                            machine_intervals.get(best_eid, []), _e_ready_pushed,
-                            timedelta(minutes=e_ct))
+                        _e_after = _batch_aware_earliest(best_eid, _e_ready_pushed, e_ct)
                         if _e_after != datetime.max:
                             _e_after = _resolve_constraints(
                                 _e_after, e_ct, best_eid, machine_intervals,
@@ -2025,7 +2054,7 @@ def _precompute_whole_chain_block(
     if _init_cs is None:
         return None
     chain_start = _init_cs
-    _dbg_block = lot.lot_name in ("f9", "real9") and any("UF-PLASMA" in s.step_name for _, s in steps)
+    _dbg_block = _tl(lot.lot_name) and any("UF-PLASMA" in s.step_name for _, s in steps)
     if _dbg_block:
         _dbg(f"[BLOCK] lot={lot.lot_name} chain={names} first_lb={first_lb} init_chain_start={chain_start}")
         if "A005-P1-UF-PLASMA" not in names and "A005-R1-UF-PLASMA" not in names:
@@ -3046,14 +3075,15 @@ def _try_schedule_chain_forward(
                 pending_refs, ref_release_times, special_lot_step_lookup, ct_lookup,
                 shift_change_intervals, step_windows, end_windows, priority_wait_map,
                 state.get("ref_release_forecast"),
-                manual_adjust_lookup=manual_adjust_lookup, pin_lookup=pin_lookup)
+                manual_adjust_lookup=manual_adjust_lookup, pin_lookup=pin_lookup,
+                special_eqp_map=special_eqp_map, eqp_batch_state=eqp_batch_state)
             if isinstance(qh, tuple) and qh[0] == "DEFER":
                 # 端步骤 reference 未释放：推迟整个链，交给单步调度处理
                 return False, scheduled_count
             if isinstance(qh, datetime) and qh > start_time:
                 start_time = qh
                 end_time = start_time + timedelta(minutes=ct)
-                if os.environ.get("SCHED_TRACE") == "1" and lot.lot_name in ("f9", "real9") \
+                if os.environ.get("SCHED_TRACE") == "1" and _tl(lot.lot_name) \
                         and "UF-PLASMA" in step.step_name:
                     print(f"[TRACE-PLASMA] {lot.lot_name} tight_lookahead deferred "
                           f"start->{qh:%m/%d %H:%M}", file=__import__("sys").stderr)
@@ -3073,7 +3103,7 @@ def _try_schedule_chain_forward(
         start_time, end_time = _apply_manual_adjust(
             lot.lot_name, step.step_name, start_time, end_time, ct, manual_adjust_lookup,
             pin_lookup=pin_lookup, reapply=True)
-        if os.environ.get("SCHED_TRACE") == "1" and lot.lot_name in ("f9", "real9") \
+        if os.environ.get("SCHED_TRACE") == "1" and _tl(lot.lot_name) \
                 and "UF-PLASMA" in step.step_name:
             print(f"[TRACE-PLASMA] {lot.lot_name} committed start={start_time:%m/%d %H:%M} "
                   f"eqp={best_eqp} ready={ready_time:%m/%d %H:%M}", file=__import__("sys").stderr)
@@ -3259,7 +3289,7 @@ def _coarse_earliest_anchors(
             if cinfo:
                 wait = _effective_chain_wait(lot, cinfo, priority_wait_map)
             import sys as _sys3
-            if os.environ.get("SCHED_TRACE") == "1" and lot.lot_name in ("f9", "real9") \
+            if os.environ.get("SCHED_TRACE") == "1" and _tl(lot.lot_name) \
                     and ("UF" in s.step_name or "FC-INSP" in s.step_name or s.step_name.endswith("MEAS")\
                           or "IR-" in s.step_name):
                 print(f"[CA] {lot.lot_name} {s.step_name} t={t:%m/%d %H:%M} ct={ct:.0f}m wait={wait:.0f}m\n",
@@ -3469,7 +3499,7 @@ def _coarse_earliest_anchors(
                     continue
                 chain_steps = info["chain_steps"]
                 chain_end_name = info["chain_end_step"]
-                if os.environ.get("SCHED_TRACE") == "1" and lot.lot_name in ("f9", "real9") \
+                if os.environ.get("SCHED_TRACE") == "1" and _tl(lot.lot_name) \
                         and any("UF" in _cs for _cs in chain_steps):
                     import sys as _sysc
                     _chain_slice = [lst[j] for j in range(s_idx - cur_idx, e_idx - cur_idx + 1)] if (s_idx - cur_idx >= 0 and e_idx - cur_idx < len(lst)) else []
@@ -3648,7 +3678,7 @@ def _coarse_earliest_anchors(
     _anchor_audit["fallback_used"] = (not _converged and bool(_cycle_lots))
     if os.environ.get("SCHED_TRACE") == "1":
         import sys as _sysa
-        for _ln in ("real9", "f9"):
+        for _ln in sorted(_TRACE_LOTS & set(lot_by_name)):
             _lo = lot_by_name.get(_ln)
             if not _lo:
                 continue
@@ -5010,7 +5040,7 @@ def _run_schedule_pass(
         eqp_constraints=eqp_constraints,
         shift_times=shift_times)
     for _l in lots:
-        if os.environ.get("SCHED_TRACE") == "1" and _l.lot_name in ("f9", "real9"):
+        if os.environ.get("SCHED_TRACE") == "1" and _tl(_l.lot_name):
             _f = flow_map.get(_l.product_name)
             if not _f:
                 continue
@@ -5837,7 +5867,8 @@ def _run_schedule_pass(
                 pending_refs, ref_release_times, special_lot_step_lookup, ct_lookup,
                 shift_change_intervals, step_windows_expanded, end_windows_expanded,
                 priority_wait_map, state.get("ref_release_forecast"),
-                manual_adjust_lookup=manual_adjust_lookup, pin_lookup=pin_lookup)
+                manual_adjust_lookup=manual_adjust_lookup, pin_lookup=pin_lookup,
+                special_eqp_map=special_eqp_map, eqp_batch_state=eqp_batch_state)
             if isinstance(qh, tuple) and qh[0] == "DEFER":
                 # 端步骤 reference 未释放，暂不能调度：挂起本 lot，等待释放
                 state["_qtime_hold"] = set(qh[1])
