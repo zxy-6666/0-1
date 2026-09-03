@@ -4227,17 +4227,24 @@ def _lead_back_shift(
                 return False
         return True
 
+    import sys as _sys
+    def _dbg(*a):
+        print("[lead_back_shift]", *a, file=_sys.stderr)
     for lp in lead_pairs:
+        _dbg("=== lead", lp.lot1, lp.step1, "->", lp.lot2, lp.step2, "lead_id", getattr(lp,'lead_id',''))
         lot1 = lot_by_name.get(lp.lot1)
         if not lot1:
             continue
         e1 = by_lot_step.get(lp.lot1, {}).get(lp.step1)
         e2 = by_lot_step.get(lp.lot2, {}).get(lp.step2)
         if e1 is None or e2 is None:
+            _dbg("  skip (no entries)")
             continue
         # 闸A 必须以实际排程为准；此处只做"背靠背"贴齐（lot2 不可早于 lot1 由闸A保证）
         gap_min = (e2.start_time - e1.end_time).total_seconds() / 60.0
+        _dbg(f"  gap_min={gap_min:.1f}min lot1.step1=[{e1.start_time:%m/%d %H:%M}->{e1.end_time:%m/%d %H:%M}] lot2.step2=[{e2.start_time:%m/%d %H:%M}->{e2.end_time:%m/%d %H:%M}]")
         if gap_min < 2.0:
+            _dbg("  -> already back-to-back, skip")
             continue                            # 已背靠背（差距≤2min）或 lot1 更迟
         _ord1 = _flow_order.get(lot1.product_name, {})
         if lp.step1 not in _ord1:
@@ -4270,6 +4277,7 @@ def _lead_back_shift(
                             step_min[_r.start_step] = _src_e.end_time
                     fshift = _max_forward_shift(lot2_es, timedelta(minutes=gap_min), other2, lower, step_min,
                                                 down_check=_down_ok)
+                    _dbg(f"  branch1 pull follower lot2={lp.lot2}: candidate fshift={fshift.total_seconds()/60:.1f}min (limit {gap_min:.1f})")
                     if fshift > timedelta(0):
                         for e in le:
                             if e.lot_name == lp.lot2:
@@ -4279,14 +4287,19 @@ def _lead_back_shift(
                             if e.lot_name == lp.lot2:
                                 e.start_time = e.start_time - fshift
                                 e.end_time = e.end_time - fshift
+                        _dbg(f"  branch1 APPLIED: pulled {lp.lot2} forward {fshift.total_seconds()/60:.1f}min")
                         continue                # 已回拉，处理下一条 lead
-
+        else:
+            _dbg("  branch1 not tried (no lot2)")
+        _dbg(f"  branch1 no-op -> try branch2 shift leader lot1={lp.lot1} later")
         # ---- 分支2：顺延领导批（lot1）——lot1 提前做完产生空闲带，整体后移贴齐 lot2 ----
         if not lot1.lead_pairs:
+            _dbg("  branch2 skip: lot1 has no lead_pairs")
             continue
         other = _other_intervals(lp.lot1)
         shift_d = timedelta(minutes=gap_min)
         if not _shift_ok(lot1_es, shift_d, other):
+            _dbg("  branch2 skip: shift collides with equipment/down/window")
             continue                            # 顺延与设备冲突 → 软退化，保持最小间隙
         # 提交：lot1 全部已排步骤与设备条目统一顺延
         for e in le:
@@ -4297,6 +4310,7 @@ def _lead_back_shift(
             if e.lot_name == lp.lot1:
                 e.start_time = e.start_time + shift_d
                 e.end_time = e.end_time + shift_d
+        _dbg(f"  branch2 APPLIED: shifted {lp.lot1} later {shift_d.total_seconds()/60:.1f}min")
     return le, ee
 
 
@@ -4389,12 +4403,15 @@ def schedule(
     第二遍在深拷贝的 lots 上运行，避免第一遍 FTF 数量变换把 qty 二次放大。
     """
     import copy as _copy
-    # lead 上游对齐：为领导批补"step1 等 跟随批 step2 紧邻上一步完成"的内部引用边
-    # （等效用户原先的双向普通引用；幂等，多 seed 反复调用不会叠加）。
-    try:
-        _inject_lead_upstream_refs(lots, get_product_flow_map(flows))
-    except Exception:
-        pass  # 注入失败不影响排程主流程
+    # lead 上游对齐（_inject_lead_upstream_refs）原实现会让【领导批】回头等【跟随批】
+    # 的上游步骤，把高优领导批整体往后拖，并经整链级联把非衔接步（如 DAF-BAKE）拖后
+    # 数天。这与设计文档 §4.2 的初衷（对齐跟随批、不拖领导批）相悖，故停用该注入；
+    # lead 背靠背仍由闸A引用（跟随批不早于领导批）+ _lead_back_shift 回拉保证。
+    # 保留 _inject_lead_upstream_refs 函数定义以便需要时重新启用。
+    # try:
+    #     _inject_lead_upstream_refs(lots, get_product_flow_map(flows))
+    # except Exception:
+    #     pass  # 注入失败不影响排程主流程
     # 保留调用方 lots 的原始快照，供第二遍使用（第一遍可能在 FTF 步骤改动 lot.qty）
     _orig_lots = _copy.deepcopy(lots)
     # 第一遍：不带预测，跑出真实释放时刻
