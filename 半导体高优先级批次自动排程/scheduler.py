@@ -4381,6 +4381,7 @@ def _lead_back_shift(
     window_end: datetime,
     eqp_constraints: Optional[list] = None,
     schedule_start: Optional[datetime] = None,
+    qtimes: Optional[list] = None,
 ) -> tuple[list[ScheduleEntry], list[EqpScheduleEntry]]:
     """lead 背靠背回拉（back-shift alignment，设计文档 §4.2 / §5.3 Pass B）。
 
@@ -4453,6 +4454,37 @@ def _lead_back_shift(
             if ne > window_end:
                 return False
         return True
+
+    def _partial_later_ok(shift_entries: list, shift_d: timedelta,
+                          other_int: dict, wend: datetime) -> timedelta:
+        """只后移【给定条目】（局部平移）的最大可行量：校验设备冲突 / 停机窗 / 窗口末端。
+        与 _shift_ok 不同，这里不提前校验整批，而是从目标量线性收缩返回实际可行位移。
+        返回 0 = 无法局部后移。"""
+        sd = shift_d
+        if sd <= timedelta(0):
+            return timedelta(0)
+        while sd > timedelta(0):
+            ok = True
+            for e in shift_entries:
+                if e.eqp_id == "-":
+                    continue
+                ns, ne = e.start_time + sd, e.end_time + sd
+                if ne > wend:
+                    ok = False
+                    break
+                if not _down_ok(e, ns, ne):
+                    ok = False
+                    break
+                for (os_, oe_) in other_int.get(e.eqp_id, []):
+                    if ns < oe_ and os_ < ne:
+                        ok = False
+                        break
+                if not ok:
+                    break
+            if ok:
+                return sd
+            sd -= timedelta(minutes=5)
+        return timedelta(0)
 
     import sys as _sys
     _lead_dbg_on = os.environ.get("SCHED_TRACE") == "1"
@@ -4581,20 +4613,358 @@ def _lead_back_shift(
             continue
         other = _other_intervals(lp.lot1)
         shift_d = timedelta(minutes=gap_min)
-        if not _shift_ok(lot1_es, shift_d, other):
+        _b2_applied = False
+        if _shift_ok(lot1_es, shift_d, other):
+            # 提交：lot1 全部已排步骤与设备条目统一顺延
+            for e in le:
+                if e.lot_name == lp.lot1:
+                    e.start_time = e.start_time + shift_d
+                    e.end_time = e.end_time + shift_d
+            for e in ee:
+                if e.lot_name == lp.lot1:
+                    e.start_time = e.start_time + shift_d
+                    e.end_time = e.end_time + shift_d
+            _dbg(f"  branch2 APPLIED: shifted {lp.lot1} later {shift_d.total_seconds()/60:.1f}min")
+            _b2_applied = True
+        else:
             _dbg("  branch2 skip: shift collides with equipment/down/window")
-            continue                            # 顺延与设备冲突 → 软退化，保持最小间隙
-        # 提交：lot1 全部已排步骤与设备条目统一顺延
-        for e in le:
-            if e.lot_name == lp.lot1:
-                e.start_time = e.start_time + shift_d
-                e.end_time = e.end_time + shift_d
-        for e in ee:
-            if e.lot_name == lp.lot1:
-                e.start_time = e.start_time + shift_d
-                e.end_time = e.end_time + shift_d
-        _dbg(f"  branch2 APPLIED: shifted {lp.lot1} later {shift_d.total_seconds()/60:.1f}min")
+        # ---- 分支2b：激进局部平移——只后移 lot1 的 step1 及下游步骤，上游原地不动 ----
+        # 整批后移（分支2）常因 lot1 上游（BAKE 等）与其它批次撞同一台设备而失败，导致共
+        # 瓶颈设备/链式 lead（H：A→B→C 传导 ~40-50min）间隙无法收敛。这里退而求其次：只平移
+        # step1 及其下游，上游（紧 Q 链入口之前）不动。代价是 step1 与紧邻上游之间出现新 gap，
+        # 必须用【入向 Q 预算封顶】确保不击穿紧 Q（用户底线：先保证紧Q不超时）。
+        # 该分支通常无法收敛"跟随批晚一整波"的拥挤场景（需成对重排，见 branch1 局限性），
+        # 但在链条传导 / 近距设备竞争的场合能把 40-50min 收到冗余带内。
+        if not _b2_applied and lp.step1 in _ord1:
+            i1 = _ord1[lp.step1]
+            if i1 >= 1 and len(lot1_es) > i1:
+                pred = lot1_es[i1 - 1]
+                if pred is not None and pred.eqp_id != "-":
+                    shift_es = [e for e in lot1_es if _ord1[e.step_name] >= i1]
+                    bd = timedelta(minutes=gap_min)
+                    # 入向 Q 预算封顶：对任意"以 step1 为终点"的 Q 区间，平移后不得击穿 Q。
+                    # 平移只后移 step1（终点步）及下游，起点步（在 step1 之前）原地不动，
+                    # 故 Q 已用时长只会随平移增长。取最紧余量为边界，确保绝不击穿紧 Q。
+                    # 起终点锚点须按约束语义取值（与 validation._check_qtime_from_entries 一致）：
+                    #   q_start = 起点步.end 若 start_mod=="track out" 否则 起点步.start
+                    #   q_end   = step1.end  若 end_mod  =="track out" 否则 step1.start
+                    if qtimes:
+                        for _q in qtimes:
+                            if _q.end_step != lp.step1 or _q.max_duration is None:
+                                continue
+                            if _q.start_step not in _ord1:
+                                continue
+                            _sidx = _ord1[_q.start_step]
+                            if _sidx >= i1:
+                                continue                       # 起点在 step1 之后，非入向
+                            _s_e = lot1_es[_sidx]
+                            _sm = (_q.start_mod or "track in").strip()
+                            _em = (_q.end_mod or "track out").strip()
+                            _q_start = _s_e.end_time if _sm == "track out" else _s_e.start_time
+                            _q_end = e1.end_time if _em == "track out" else e1.start_time
+                            _used = (_q_end - _q_start).total_seconds() / 60.0
+                            headroom = timedelta(minutes=_q.max_duration - _used)
+                            if bd > headroom:
+                                bd = headroom
+                    if bd > timedelta(0):
+                        _other2b = _other_intervals(lp.lot1)
+                        got = _partial_later_ok(shift_es, bd, _other2b, window_end)
+                        _dbg(f"  branch2b partial-shift lot1={lp.lot1} step1+ downstream: "
+                             f"bd={bd.total_seconds()/60:.1f}min got={got.total_seconds()/60:.1f}min")
+                        if got > timedelta(0):
+                            _sh2b = {x.step_name for x in shift_es}
+                            for e in le:
+                                if e.lot_name == lp.lot1 and e.step_name in _sh2b:
+                                    e.start_time = e.start_time + got
+                                    e.end_time = e.end_time + got
+                            for e in ee:
+                                if e.lot_name == lp.lot1 and e.step_name in _sh2b:
+                                    e.start_time = e.start_time + got
+                                    e.end_time = e.end_time + got
+                            _dbg(f"  branch2b APPLIED: shifted {lp.lot1} step1+ later "
+                                 f"{got.total_seconds()/60:.1f}min")
+                            continue
     return le, ee
+
+
+def _latest_full_fit(
+    eqp_id: str,
+    dur: timedelta,
+    limit_end: datetime,
+    intervals: list,
+    down_map: dict,
+    floor: Optional[datetime] = None,
+) -> Optional[tuple[datetime, datetime]]:
+    """在设备 eqp_id 上找一个【结束时刻 <= limit_end】的【最晚】可行连续段 (start, end)
+    以插下时长为 dur 的一段作业。
+    - intervals: 该设备上其它占用 (start, end) 列表
+    - down_map: eqp_id 的停机窗（作业不得落入）
+    - floor: 允许的**最早开始**下界（仅对链条首步传 lot.start_time；其它步骤为 None）
+    从 limit_end 逐 5min 倒退搜索最近的可用空位；找不到返回 None。
+    """
+    if dur <= timedelta(0):
+        return None
+    down = down_map.get(eqp_id, [])
+    lo_end = limit_end - timedelta(days=5)
+    if floor is not None and floor > lo_end:
+        lo_end = floor
+    e = limit_end
+    while e - dur >= lo_end:
+        s = e - dur
+        bad = False
+        for ws, we in down:
+            if e > ws and s < we:
+                bad = True
+                break
+        if not bad:
+            for (os_, oe_) in intervals:
+                if s < oe_ and os_ < e:
+                    bad = True
+                    break
+        if not bad:
+            return (s, e)
+        e -= timedelta(minutes=5)
+    return None
+
+
+def _pair_interleave(
+    lots: list,
+    lot_entries: list,
+    eqp_entries: list,
+    flows: list,
+    window_end: datetime,
+    eqp_constraints: Optional[list] = None,
+    schedule_start: Optional[datetime] = None,
+    qtimes: Optional[list] = None,
+) -> tuple[list[ScheduleEntry], list[EqpScheduleEntry]]:
+    """彻底成对重排（设计文档 pair-interleave）：末步共享设备的背靠背收敛。
+
+    对"同末步 S + 同设备 D + 成对碎裂（follower.S.start − leader.S.end > 冗余带）"的
+    lead 组，把 EQP-MOLD 上的槽位序列从"先全部 leader、再全部 follower"交错成
+    [L0,F0,L1,F1,…]，再反推每个前移 follower 的整条上游链，使各对背靠背落到冗余带内。
+
+    硬边界：槽位不得落入停机窗/越过窗口末端/与组外设备占用冲突；任何成员 S 前移即放弃；
+    leader 后移须不击穿其入向紧 Q；follower 前移须通过上游反推与 gate A 校验。
+    任一步不可行 → 整组回滚（本函数只在全部校验通过后一次性提交），绝不引入新 Q 超时。
+    """
+    lead_pairs = [lp for lot in lots for lp in (lot.lead_pairs or [])]
+    if not lead_pairs or not lot_entries:
+        return lot_entries, eqp_entries
+    _down_map = {}
+    if eqp_constraints:
+        _ss = schedule_start or min((e.start_time for e in lot_entries), default=datetime.now())
+        try:
+            _expanded = _expand_eqp_constraints(eqp_constraints, _ss)
+            _down_map = {k: [(ws, we) for ws, we in v] for k, v in _expanded.items()}
+        except Exception:
+            _down_map = {}
+    def _in_down(eqp_id: str, s: datetime, e: datetime) -> bool:
+        for ws, we in _down_map.get(eqp_id, []):
+            if e > ws and s < we:
+                return True
+        return False
+    lot_by_name = {l.lot_name: l for l in lots}
+    le = list(lot_entries)
+    ee = list(eqp_entries)
+    by_lot_step: dict[str, dict[str, ScheduleEntry]] = {}
+    for e in le:
+        by_lot_step.setdefault(e.lot_name, {})[e.step_name] = e
+    ee_by_lot_step: dict[str, dict[str, EqpScheduleEntry]] = {}
+    for e in ee:
+        ee_by_lot_step.setdefault(e.lot_name, {})[e.step_name] = e
+    flow_map = get_product_flow_map(flows)
+    _flow_order: dict[str, dict[str, int]] = {
+        _p: {s.step_name: i for i, s in enumerate(_fs)} for _p, _fs in flow_map.items()}
+    TOL = LEAD_BACK_GAP_TOLERANCE_MIN
+
+    # ---- 汇总"同末步 + 同设备"的 lead 对 ----
+    groups: dict[tuple, list] = {}
+    for lp in lead_pairs:
+        if lp.step1 != lp.step2:
+            continue
+        e1 = by_lot_step.get(lp.lot1, {}).get(lp.step1)
+        e2 = by_lot_step.get(lp.lot2, {}).get(lp.step2)
+        if e1 is None or e2 is None:
+            continue
+        if e1.eqp_id == "-" or e1.eqp_id != e2.eqp_id:
+            continue
+        gap = (e2.start_time - e1.end_time).total_seconds() / 60.0
+        groups.setdefault((e1.eqp_id, e1.step_name), []).append((lp, e1, e2, gap))
+
+    for (D, S), items in groups.items():
+        if len(items) < 2:
+            continue                       # 成对交织需要 ≥2 对（单对由 _lead_back_shift 处理）
+        if not any(g > TOL for (_, _, _, g) in items):
+            continue                       # 整组均已背靠背，无需重排
+        _interleave_one_group(D, S, items, by_lot_step, ee_by_lot_step,
+                              _flow_order, _down_map, _in_down, lot_by_name,
+                              qtimes, window_end)
+    return le, ee
+
+
+def _interleave_one_group(
+    D: str, S: str, items: list,
+    by_lot_step: dict, ee_by_lot_step: dict,
+    _flow_order: dict, _down_map: dict, _in_down,
+    lot_by_name: dict, qtimes: Optional[list], window_end: datetime,
+) -> None:
+    items = sorted(items, key=lambda x: x[1].start_time)   # 按 leader.S 开始排序
+    group_lots = {lp.lot1 for (lp, _, _, _) in items} | {lp.lot2 for (lp, _, _, _) in items}
+    leader_lots = {lp.lot1 for (lp, _, _, _) in items}
+
+    def _order_of(lotname: str) -> dict:
+        _p = lot_by_name[lotname].product_name
+        return _flow_order.get(_p, {})
+
+    # ---- 目标槽位：锚定最早 start，按 [L0,F0,L1,F1,...] 连续平铺 ----
+    emission = []
+    for (lp, el, ef, g) in items:
+        emission += [el, ef]
+    anchor = min(e.start_time for e in emission)
+    tmap: dict[str, tuple] = {}
+    cur = anchor
+    for ent in emission:
+        dur = ent.end_time - ent.start_time
+        s, en = cur, cur + dur
+        tmap[ent.lot_name + "|" + ent.step_name] = (s, en)
+        cur = en
+    for (s, en) in tmap.values():
+        if en > window_end or _in_down(D, s, en):
+            return                       # 落入停机窗 / 越窗 -> 整组放弃
+
+    # 本方案 leader 只后移或不动；任何成员 S 前移即放弃
+    for (lp, el, ef, g) in items:
+        if tmap[el.lot_name + "|" + el.step_name][0] < el.start_time:
+            return
+
+    # 组外设备占用不得与重排后槽位冲突（组内为连续区间，天然不重叠）
+    other_d: dict[str, list] = {}
+    for _lot_dict in ee_by_lot_step.values():
+        for _ee_ in _lot_dict.values():
+            if _ee_.eqp_id == "-" or _ee_.lot_name in group_lots:
+                continue
+            other_d.setdefault(_ee_.eqp_id, []).append((_ee_.start_time, _ee_.end_time))
+    for (s, en) in tmap.values():
+        for (os_, oe_) in other_d.get(D, []):
+            if s < oe_ and os_ < en:
+                return
+
+    # ---- leader 后移入向 Q 校验 ----
+    def _check_q_bounded(lotname: str, new_map: dict) -> bool:
+        ordm = _order_of(lotname)
+        if S not in ordm:
+            return True
+        for q in qtimes or []:
+            if q.max_duration is None or q.end_step != S:
+                continue
+            if q.start_step not in ordm or ordm[q.start_step] >= ordm[S]:
+                continue
+            se = by_lot_step.get(lotname, {}).get(q.start_step)
+            es = by_lot_step.get(lotname, {}).get(S)
+            if se is None or es is None:
+                continue
+            def _t(step, e_):
+                if step in new_map:
+                    return new_map[step]
+                return (e_.start_time, e_.end_time)
+            st = _t(q.start_step, se)
+            et = _t(S, es)
+            sm = (q.start_mod or "track in").strip()
+            em = (q.end_mod or "track out").strip()
+            qs = st[1] if sm == "track out" else st[0]
+            qe = et[1] if em == "track out" else et[0]
+            if (qe - qs).total_seconds() / 60.0 > q.max_duration:
+                return False
+        return True
+
+    for (lp, el, ef, g) in items:
+        if not _check_q_bounded(lp.lot1, {S: tmap[lp.lot1 + "|" + S]}):
+            return
+
+    # ---- 阻塞区间：组外 + leader 上游(固定) 为 base；组内 S 为 reserved ----
+    base: dict[str, list] = {}
+    for lotname, lotdict in ee_by_lot_step.items():
+        if lotname not in group_lots:
+            for e in lotdict.values():
+                if e.eqp_id != "-":
+                    base.setdefault(e.eqp_id, []).append((e.start_time, e.end_time))
+        elif lotname in leader_lots:
+            ordm = _order_of(lotname)
+            for e in lotdict.values():
+                if e.eqp_id == "-":
+                    continue
+                if e.step_name in ordm and ordm[e.step_name] < ordm[S]:
+                    base.setdefault(e.eqp_id, []).append((e.start_time, e.end_time))
+    reserved: dict[str, list] = {}
+    for lotname in group_lots:
+        key = lotname + "|" + S
+        if key in tmap:
+            reserved.setdefault(D, []).append(tmap[key])
+    def _blocks(dev: str) -> list:
+        return base.get(dev, []) + reserved.get(dev, [])
+
+    # ---- 反推每个前移 follower 的整条上游链 ----
+    follower_recs: list = []
+    ordered = sorted(items, key=lambda x: tmap[x[2].lot_name + "|" + S][0])
+    for (lp, el, ef, g) in ordered:
+        lotf = lp.lot2
+        ordm = _order_of(lotf)
+        if S not in ordm or lotf not in by_lot_step:
+            return
+        keys = sorted(ordm, key=lambda st: ordm[st])
+        steps_sorted = [by_lot_step[lotf][st] for st in keys if st in by_lot_step[lotf]]
+        iS = ordm[S]
+        if iS >= len(steps_sorted):
+            return
+        NZs, NZe = tmap[lotf + "|" + S]
+        rec = {S: (NZs, NZe)}
+        ok = True
+        for k in range(iS - 1, -1, -1):
+            sk = steps_sorted[k]
+            durk = sk.end_time - sk.start_time
+            succ_start = rec[steps_sorted[k + 1].step_name][0]
+            if sk.eqp_id == "-":
+                if sk.end_time > succ_start:
+                    ok = False
+                    break
+                rec[sk.step_name] = (sk.start_time, sk.end_time)
+                continue
+            floor = lot_by_name[lotf].start_time if k == 0 else None
+            placed = _latest_full_fit(sk.eqp_id, durk, succ_start, _blocks(sk.eqp_id),
+                                      _down_map, floor)
+            if placed is None:
+                ok = False
+                break
+            rec[sk.step_name] = placed
+        if not ok:
+            return
+        # gate A：follower.S.start >= leader.S.end
+        lkey = lp.lot1 + "|" + S
+        if NZs < tmap[lkey][1]:
+            return
+        if not _check_q_bounded(lotf, rec):
+            return
+        for st, tt in rec.items():
+            if st == S:
+                continue
+            reserved.setdefault(by_lot_step[lotf][st].eqp_id, []).append(tt)
+        follower_recs.append((lotf, rec))
+
+    # ---- 全部校验通过，一次性提交 ----
+    final: dict[tuple, tuple] = {}
+    for lotname in group_lots:
+        final[(lotname, S)] = tmap[lotname + "|" + S]
+    for lotf, rec in follower_recs:
+        for st, tt in rec.items():
+            final[(lotf, st)] = tt
+    for (lotname, st), (s, en) in final.items():
+        lee = by_lot_step[lotname][st]
+        lee.start_time = s
+        lee.end_time = en
+        eee = ee_by_lot_step.get(lotname, {}).get(st)
+        if eee is not None:
+            eee.start_time = s
+            eee.end_time = en
 
 
 def _detect_qtime_cross_shift(
@@ -4782,7 +5152,18 @@ def schedule(
     _best_le, _best_ee = _lead_back_shift(
         lots=_orig_lots, lot_entries=_best_le, eqp_entries=_best_ee,
         flows=flows, window_end=_win + timedelta(days=2),
-        eqp_constraints=eqp_constraints)
+        eqp_constraints=eqp_constraints, qtimes=qtimes)
+    # ---- 彻底成对重排（pair-interleave）：把"末步共享设备"上成对碎裂的 lead 组
+    #      交错为 [L0,F0,L1,F1,…] 并反推 follower 上游链，收敛结构性 >120min 间隙。
+    #      任一槽位/反推不可行即整组回滚，绝不引入新 Q 超时（见 pair-interleave 文档）。
+    try:
+        _ss_pi = min((e.start_time for e in _best_le), default=datetime.now())
+        _best_le, _best_ee = _pair_interleave(
+            lots=_orig_lots, lot_entries=_best_le, eqp_entries=_best_ee,
+            flows=flows, window_end=_win + timedelta(days=2),
+            eqp_constraints=eqp_constraints, schedule_start=_ss_pi, qtimes=qtimes)
+    except Exception:
+        pass
     # ---- 超 Q 后修复（尽力而为）：长 Q 链首被排得过早、端步骤被延后导致超 Q 时，
     #      把链首后移到满足 Q 预算的位置（如 BAKE→DISPENSE 1445min>1440min 场景）。
     #      只后移不前置；设备冲突 / 上游 Q 被撑爆 / 校验违规增加时整体回滚。
