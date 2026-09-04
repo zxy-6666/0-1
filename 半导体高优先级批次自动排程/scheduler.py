@@ -1628,6 +1628,12 @@ def _compute_batch_slot(
             "pending": None,   # {start, end, members: {lot_name: est_ready}}
         }
     bs = eqp_batch_state[batch_key]
+    _dbg_batch = (os.environ.get("SCHED_TRACE") == "1"
+                  and _tl(lot.lot_name) and "UF-CURE" in step.step_name)
+    import sys as _bsys
+    def _dbg(*a):
+        if _dbg_batch:
+            print("[batch]", *a, file=_bsys.stderr)
     now = cur_time if cur_time is not None else ready_time
     # 设备实际空闲时刻（上一批次结束时间）。若为 None 说明设备从未被本批次逻辑占用或
     # 已空闲；若在 now 之前则上一批刚结束。open_time 用它与 ready_time 取 max 即可，
@@ -1645,8 +1651,44 @@ def _compute_batch_slot(
     # 资格、错过同批而另开新批次（如 PC1 批次在 11:39 等 real1，real1 17:13 才被拾取，
     # 此时 busy_until=17:13==now，pending 被误清 → real1 落单且被推到 17:13 超 Q）。
     pending = bs.get("pending")
+    if _dbg_batch:
+        _dbg(f"[BATCH-ENTRY] {lot.lot_name} {step.step_name} eqp={eqp_id} ready={ready_time:%m/%d %H:%M} "
+             f"pending={pending and {'start': pending['start'], 'members': sorted(pending.get('members', {}))}} "
+             f"busy_until={bs.get('busy_until')} now={now}")
+
+    # 当前 lot 在本步的 Q-time 硬截止：恒组批凑批不得把本 lot 的批次开始推迟到截止之后
+    # （否则为等慢批次而牺牲本 lot 的 Q-time）。end_mod=track in 时 deadline 约束开始时间，
+    # track out 时约束结束时间 → 反推开始时间的上限。必须在 pending 判定之前计算，
+    # 因为"加入待凑批次"路径也必须遵守截止（否则批次被拉到超 Q）。
+    hard_deadline = None
+    _cur_tracker = lot_state.get(lot.lot_name, {}).get("qtime_tracker", {})
+    for _tk in _cur_tracker.values():
+        if _tk.get("end_step") != step.step_name or _tk.get("deadline") is None:
+            continue
+        _em = (_tk.get("end_mod") or "track out").strip()
+        _limit = _tk["deadline"] if _em == "track in" else _tk["deadline"] - timedelta(minutes=ct)
+        if hard_deadline is None or _limit < hard_deadline:
+            hard_deadline = _limit
+
     if pending is not None:
         if lot.lot_name in pending.get("members", {}) and ready_time <= pending["start"]:
+            # Q-time 兜底：待凑批次开始已超过本 lot 硬截止 → 为保证本 lot 不超 Q，
+            # 把整个批次开始下拉到本 lot 截止（若批次已开在截止之后，则整批提前）。
+            # 这样各成员仍留在同一恒组批（不制造设备串行/重叠），且不早于本 lot 就绪；
+            # 其他成员若确实晚于截止，会在各自入口按 est>hd 判定切出开新批。
+            if hard_deadline is not None and pending["start"] > hard_deadline:
+                _pstart = pending["start"]
+                _likely = hard_deadline if hard_deadline < _pstart else _pstart
+                if _likely < ready_time:
+                    _likely = ready_time
+                if _dbg_batch:
+                    _dbg(f"[BATCH-JOIN-CAP] {lot.lot_name} {step.step_name} pending@{_pstart:%m/%d %H:%M} "
+                         f"> hd={hard_deadline:%m/%d %H:%M} → cap@{_likely:%m/%d %H:%M}")
+                pending["start"] = _likely
+                pending["members"][lot.lot_name] = ready_time
+            if _dbg_batch:
+                _dbg(f"[BATCH-JOIN-PENDING] {lot.lot_name} {step.step_name} join pending@"
+                     f"{pending['start']:%m/%d %H:%M}")
             return True, pending["start"]
         # 非成员 / 已错过批次开始：若批次仍在运行则等待
         if bs["busy_until"] is not None and now < bs["busy_until"]:
@@ -1680,19 +1722,6 @@ def _compute_batch_slot(
     # 时刻（在 now 之前则上一批已结束、设备空闲），批次从 max(ready_time, busy_until)
     # 起才算真正可用，且不受全局 now 抬升的影响。
     open_time = ready_time if _eqp_free is None else max(ready_time, _eqp_free)
-
-    # 当前 lot 在本步的 Q-time 硬截止：恒组批凑批不得把本 lot 的批次开始推迟到截止之后
-    # （否则为等慢批次而牺牲本 lot 的 Q-time）。end_mod=track in 时 deadline 约束开始时间，
-    # track out 时约束结束时间 → 反推开始时间的上限。
-    hard_deadline = None
-    _cur_tracker = lot_state.get(lot.lot_name, {}).get("qtime_tracker", {})
-    for _tk in _cur_tracker.values():
-        if _tk.get("end_step") != step.step_name or _tk.get("deadline") is None:
-            continue
-        _em = (_tk.get("end_mod") or "track out").strip()
-        _limit = _tk["deadline"] if _em == "track in" else _tk["deadline"] - timedelta(minutes=ct)
-        if hard_deadline is None or _limit < hard_deadline:
-            hard_deadline = _limit
 
     _lot_suffix = step.step_name.split("-")[-1]
     _lot_stage = getattr(step, "stage_name", "")
@@ -1828,9 +1857,24 @@ def _compute_batch_slot(
     # Q-time 硬截止兜底：批次开始不晚于本 lot 的 Q-time 截止（仅当截止在 open_time 之后；
     # 若截止早于 open_time，说明物理上已无法满足 Q-time，不得把批次压到 open_time 之前
     # 造成与运行中批次重叠）。宁可本 lot 单开一炉，也不让凑批把它拖到超 Q。
+    if _dbg_batch:
+        _dbg(f"[BATCH-SLOT] {lot.lot_name} {step.step_name} eqp={eqp_id} ready={ready_time:%m/%d %H:%M} "
+             f"hd={hard_deadline:%m/%d %H:%M if hard_deadline else None} "
+             f"open={open_time:%m/%d %H:%M} "
+             f"batch_start_pre={batch_start:%m/%d %H:%M} members={sorted(members)} "
+             f"busy_until={bs.get('busy_until')} cur_time={cur_time}")
+    if _dbg_batch and hard_deadline is not None:
+        _dbg(f"[BATCH-SLOT] {lot.lot_name} {step.step_name} eqp={eqp_id} ready={ready_time:%m/%d %H:%M} "
+             f"open={open_time:%m/%d %H:%M} hard_deadline={hard_deadline:%m/%d %H:%M} "
+             f"batch_start_pre={batch_start:%m/%d %H:%M} members={sorted(members)} "
+             f"busy_until={bs.get('busy_until')}")
     if (hard_deadline is not None and open_time < hard_deadline
             and batch_start > hard_deadline):
-        batch_start = hard_deadline
+        _cap = hard_deadline
+        if _dbg_batch:
+            _dbg(f"[BATCH-SLOT] {lot.lot_name} {step.step_name} CAP batch_start "
+                 f"{batch_start:%m/%d %H:%M}->{_cap:%m/%d %H:%M} (Q-time 兜底)")
+        batch_start = _cap
 
     # 记录待凑批次（含成员名单，供后续到达的成员加入同一批次）
     if members:
