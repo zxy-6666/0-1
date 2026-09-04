@@ -46,6 +46,10 @@ QTIGHT_SAFETY_MARGIN = 20.0  # 紧 Q-time 起点延迟的安全余量（百分�
 QTIGHT_MIN_MARGIN = 30.0     # 紧 Q-time 安全余量下限（分钟）：实际余量 = max(预算×%, 下限)
 # 原因：百分比对短段不公平——240min 的 20% 仅 48min、120min 仅 24min，缓冲被压缩；
 # 加绝对下限保证任何紧段至少预留 30min 缓冲，短段不易被击穿。
+# 贪心原则（用户确认）：不要为攒 Q-time 余量把链首无限往后推（否则整批被推到隔天/好几天）。
+# 链首最多被 _tight_qtime_target_start 推后 QTIGHT_MAX_PUSH_MIN 分钟；超过即按"这只是该站
+# 起始位置的一次固定步长试探"处理——能排就优先排（贪心），Q-time 由超后修复尽力兜底。
+QTIGHT_MAX_PUSH_MIN = 180.0  # 紧链首起始位置被推后的最大步长（分钟）
 CROSS_SHIFT_AVOID = True  # 紧 Q 链不跨班次（用户规则）：紧链相邻步骤（如 PLASMA→DISPENSE）
 # 的 Q 窗口若跨过班次切换时刻，把链首起点推后到班次之后，使整段链落在同一班次内。
 # best-effort：推后会撑破上游紧链或不可行时保留原排程并输出跨班次告警。可配置关闭。
@@ -57,13 +61,14 @@ CROSS_SHIFT_AVOID = True  # 紧 Q 链不跨班次（用户规则）：紧链相�
 BATCH_WAIT_WINDOW = 240
 
 # lead 背靠背冗余带（分钟）：lead 语义为"先导批（领导）先完成衔接步，正式批（跟随）
-# 在其后冗余带内衔接"。冗余带是硬上界——允许先导批完成后"最多"空等 LEAD_BACK_GAP_TOLERANCE_MIN
-# 再让正式批开始；超过该值即视为背靠背违背、硬性问题。默认 1.5h=90min，可通过环境变量
+# 在其后冗余带内衔接"。冗余带是硬约束（不是软权重/软罚分）——允许先导批完成后"最多"
+# 空等 LEAD_BACK_GAP_TOLERANCE_MIN 再让正式批开始；超过该值即视为背靠背违背、硬性问题。
+# 用户确认：背靠背必须强制执行，Buffer 仅 30min（不是 1.5h）。可通过环境变量
 # LEAD_BACK_GAP_TOLERANCE_MIN 覆盖。
 try:
-    LEAD_BACK_GAP_TOLERANCE_MIN = float(os.environ.get("LEAD_BACK_GAP_TOLERANCE_MIN", "90"))
+    LEAD_BACK_GAP_TOLERANCE_MIN = float(os.environ.get("LEAD_BACK_GAP_TOLERANCE_MIN", "30"))
 except Exception:
-    LEAD_BACK_GAP_TOLERANCE_MIN = 90.0
+    LEAD_BACK_GAP_TOLERANCE_MIN = 30.0
 
 # 调试 trace 目标批次（逗号分隔，默认 f9,real9）：所有 SCHED_TRACE 分支只对这批打印，
 # 可用 SCHED_TRACE_LOTS=real8 等追踪任意批次定位问题。
@@ -1127,6 +1132,10 @@ def _tight_qtime_target_start(
                             _st = None
                 if _st is not None and _st > tgt:
                     tgt = _st
+        # 贪心上限：链首起始位置最多被推后 QTIGHT_MAX_PUSH_MIN（一次固定步长的试探），
+        # 避免为攒 Q-time 余量把整批无谓推到隔天/好几天。超过即截断到贪心最早位置。
+        if s_start is not None and tgt > s_start + timedelta(minutes=QTIGHT_MAX_PUSH_MIN):
+            tgt = s_start + timedelta(minutes=QTIGHT_MAX_PUSH_MIN)
         if tgt > s_start and (target_time is None or tgt > target_time):
             target_time = tgt
 
@@ -4227,6 +4236,51 @@ def _max_forward_shift(
     return timedelta(0)
 
 
+def _max_backward_shift(
+    entries: list,
+    target_shift: timedelta,
+    other_int: dict,
+    window_end: datetime,
+    down_check: Optional[callable] = None,
+) -> timedelta:
+    """计算整批可**后移**（延后）的最大位移，用于闸A 倒序修复（跟随批 step2 早于领导批完成）。
+
+    与 _max_forward_shift 对称：后移受
+      1. 后移后的设备占用不与其它批次（other_int）冲突；
+      2. down_check：不得落入设备停机窗；
+      3. 不越过排程窗口末端 window_end。
+    返回实际可用的后移量（0 = 无法后移）。统一位移保持条目内部相对顺序。
+    """
+    shift_d = target_shift
+    if shift_d <= timedelta(0):
+        return timedelta(0)
+    while shift_d > timedelta(0):
+        ok = True
+        for e in entries:
+            if e.eqp_id == "-":
+                continue
+            ns, ne = e.start_time + shift_d, e.end_time + shift_d
+            if ne > window_end:
+                ok = False
+                break
+            if e.eqp_id in other_int:
+                for (os_, oe_) in other_int[e.eqp_id]:
+                    if ns < oe_ and os_ < ne:
+                        ok = False
+                        break
+                if not ok:
+                    break
+            if ok and down_check is not None and not down_check(e, ns, ne):
+                ok = False
+                break
+            if not ok:
+                break
+        if ok:
+            return shift_d
+        shift_d -= timedelta(minutes=5)
+    return timedelta(0)
+
+
 def _inject_lead_upstream_refs(lots: list, flow_map: dict) -> None:
     """lead 上游对齐（设计文档 §4.1 第二条内部阻塞，等效用户原先的"双向普通引用"）：
     领导批 step1 **等 跟随批 step2 的紧邻上一步完成**——让领导批不跑太快，
@@ -4243,19 +4297,14 @@ def _inject_lead_upstream_refs(lots: list, flow_map: dict) -> None:
             follow = by_name.get(lp.lot2)
             if not follow:
                 continue
-            # 领导批是先导批（pioneer）时跳过上游对齐注入：pioneer 在前跑扫雷，
-            # 其 delay 完全无关紧要、应尽量早做；若还让它等待正式跟随批的紧邻上游，
-            # 会被慢的正式批上游拽回，把整条紧链（PLASMA→DISPENSE→CURE）压到次日
-            # （real9←f9 中 f9 因等 real9.UF-PLASMA 被拖到 09/11，real9 整链随之跨天的根因）。
-            # 先导批自由领跑 + 闸A（正式批不早于先导批完成衔接步）即保证"先导先行、正式尾随"。
+            # 领导批是先导批（pioneer）时跳过上游对齐注入：pioneer 在前跑扫雷。
             if getattr(lot, "pioneer", False):
                 if os.environ.get("SCHED_TRACE") == "1":
-                    print(f"[inject_lead] skip: leader {lp.lot1} is pioneer (run ahead freely)",
+                    print(f"[inject_lead] skip: leader {lp.lot1} is pioneer (run ahead; paced by _lead_back_shift)",
                           file=__import__("sys").stderr)
                 continue
-            # 跟随批是先导批（pioneer）时跳过注入：先导批为此前线扫雷、其 timing 无关紧要，
-            # 若仍让领导批硬等先导批的紧邻上游，会把它拽到先导批（被无关因素）延后后的时刻，
-            # 造成"左脚踩右脚"级联整链延后（real9 被 f9 拖到次日）。
+            # 跟随批是先导批（pioneer）时跳过注入：pioneer 的 timing 无关紧要，硬等它会被无关
+            # 因素拽回，造成"左脚踩右脚"级联整链延后。
             if getattr(follow, "pioneer", False):
                 continue
             ff = flow_map.get(follow.product_name)
@@ -4379,6 +4428,43 @@ def _lead_back_shift(
         # 闸A 必须以实际排程为准；此处只做"背靠背"贴齐（lot2 不可早于 lot1 由闸A保证）
         gap_min = (e2.start_time - e1.end_time).total_seconds() / 60.0
         _dbg(f"  gap_min={gap_min:.1f}min lot1.step1=[{e1.start_time:%m/%d %H:%M}->{e1.end_time:%m/%d %H:%M}] lot2.step2=[{e2.start_time:%m/%d %H:%M}->{e2.end_time:%m/%d %H:%M}]")
+        # 分支0：闸A 倒序修复——跟随批 lot2 的 step2 **早于**领导批 lot1 的 step1 完成（gap<0）。
+        # 旧逻辑把负 gap 当成"已背靠背"直接跳过、从不修复，导致闸A 倒序漏网（real7↔real6）。
+        # 这里 best-effort 把跟随批 step2 及其下游整体后移，使 step2.start 不早于领导批完成；
+        # 受设备/停机/窗口限制无法后移时软退化（validation 的硬性闸A 会如实报出）。
+        if gap_min < 0:
+            _dbg(f"  branch0 倒序(gap={gap_min:.1f}min): push follower {lp.lot2} step2({lp.step2}) later")
+            lot2r = lot_by_name.get(lp.lot2)
+            if lot2r:
+                _ord2r = _flow_order.get(lot2r.product_name, {})
+                if lp.step2 in _ord2r:
+                    _i2 = _ord2r[lp.step2]
+                    down_es = [e for e in le
+                               if e.lot_name == lp.lot2 and e.step_name in _ord2r
+                               and _ord2r[e.step_name] >= _i2]
+                    down_es.sort(key=lambda x: _ord2r[x.step_name])
+                    if down_es:
+                        other2r = _other_intervals(lp.lot2)
+                        push = _max_backward_shift(
+                            down_es, timedelta(minutes=-gap_min), other2r, window_end,
+                            down_check=_down_ok)
+                        if push > timedelta(0):
+                            _down_names = {x.step_name for x in down_es}
+                            for e in le:
+                                if e.lot_name == lp.lot2 and e.step_name in _down_names:
+                                    e.start_time += push
+                                    e.end_time += push
+                            for e in ee:
+                                if e.lot_name == lp.lot2 and e.step_name in _down_names:
+                                    e.start_time += push
+                                    e.end_time += push
+                            _dbg(f"  branch0 APPLIED: pushed follower {lp.lot2} step2+ later {push.total_seconds()/60:.1f}min")
+                            e2.start_time += push
+                            e2.end_time += push
+                            e1 = by_lot_step.get(lp.lot1, {}).get(lp.step1)
+                            if e1 is not None:
+                                gap_min = (e2.start_time - e1.end_time).total_seconds() / 60.0
+            continue
         # 背靠背冗余带（硬上界）：间隙 ≤ LEAD_BACK_GAP_TOLERANCE_MIN 视为已背靠背，不再调动。
         # 这是硬约束——间隙超过冗余带就是问题，下面 branch1 会把跟随批前移贴齐先导批，把间隙
         # 收敛到冗余带内；过紧的阈值会让大批次因设备/链条自然拉开的几十小时间隙被反复尝试
@@ -4437,16 +4523,14 @@ def _lead_back_shift(
         if not lot1.lead_pairs:
             _dbg("  branch2 skip: lot1 has no lead_pairs")
             continue
-        # 【pioneer 守卫（领导侧）】lot1 是随行先导批时不做"顺延领导批贴齐"：先导批在前
-        # 跑扫雷、其 delay 无关紧要，应尽量早做；若仍把先导领导批整体后移去贴齐慢的正式
-        # 跟随批，会把它拖到正式批的时点（real9←f9 中 f9 被 real9 的上游拖到 09/11、
-        # 整条紧链随之跨天的根因）。自由领跑 + 闸A 即已满足"先导先行、正式尾随"。
-        if getattr(lot1, "pioneer", False):
-            _dbg("  branch2 skip: leader lot1 is pioneer, don't drag pioneer leader later")
-            continue
-        # 【pioneer 守卫】lot2 是随行先导批时不做"顺延领导批贴齐"：先导批的 timing 无关紧要
-        # （其前置步骤可能因无关因素被大幅延后），若仍把正式领导批整体后移去贴齐它，
-        # 会把正式批拖到次日（real9 被 f9 拽到 09/11，UF-BAKE 早上做完、剩余步骤隔天）。
+        # 【构造期协同预约】【用户主场景】lot1 是随行先导批（pioneer）时**也要允许顺延直到贴齐
+        # 正式跟随批**：先导批若自由飞跑、把衔接步（UF-DISPENSE/MD-MOLDING）远远做完，正式批
+        # 隔十几~几十小时才赶到，背靠背必然击穿（f45 完成 UF-DISPENSE 后 real4 隔 1150min 才
+        # 开始、MD-MOLDING 隔 3759min）。这正是用户期望的"先导停在 stepN 前、正式批快到了
+        # 先导才做完 stepN、做完正式紧接着做"。因此不再跳过 pioneer 领导批的执行主打分支；
+        # 具体能否贴齐由下方 _shift_ok 的设备/停机/窗口校验把关，冲突则软退化（保持最小间隙）。
+        # 例外：lot2 是随行先导批时不做"顺延领导批贴齐"——正式领导批硬等 pioneer 会被其无关
+        # 延后拽回（"左脚踩右脚"级联整链延后）。
         _foll2 = lot_by_name.get(lp.lot2)
         if _foll2 is not None and getattr(_foll2, "pioneer", False):
             _dbg("  branch2 skip: lot2 is pioneer, don't drag formal leader later")

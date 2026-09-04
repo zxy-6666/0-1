@@ -376,9 +376,9 @@ _ZERO_MARGIN_PENALTY = 1e6   # 余量=0 时单链罚分基数（分钟）：≈ 
 # 目标函数权重。可通过环境变量 LEAD_BACK_GAP_TOLERANCE_MIN 覆盖，须与 scheduler.py
 # 中的同名常量保持一致。
 try:
-    LEAD_BACK_GAP_TOLERANCE_MIN = float(os.environ.get("LEAD_BACK_GAP_TOLERANCE_MIN", "90"))
+    LEAD_BACK_GAP_TOLERANCE_MIN = float(os.environ.get("LEAD_BACK_GAP_TOLERANCE_MIN", "30"))
 except Exception:
-    LEAD_BACK_GAP_TOLERANCE_MIN = 90.0
+    LEAD_BACK_GAP_TOLERANCE_MIN = 30.0
 
 
 def compute_objective(
